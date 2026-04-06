@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 270px; height: 340px;
+    background: transparent;
+    overflow: hidden;
+    user-select: none;
+  }
+  canvas {
+    display: block;
+    background: transparent;
+  }
+</style>
+</head>
+<body>
+<canvas id="c" width="270" height="340"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const W = 270, H = 340;
+const SURFACE_Y = 60; // y where ground begins
+
+// ─── Palette ────────────────────────────────────────────────
+const COL = {
+  sky:      'rgba(20,28,40,0)',        // transparent sky
+  dirt1:    'rgba(62,38,18,0.82)',
+  dirt2:    'rgba(52,30,12,0.88)',
+  dirt3:    'rgba(40,22,8,0.92)',
+  tunnel:   'rgba(90,58,28,0.55)',
+  grass:    'rgba(60,110,40,0.85)',
+  ant:      '#2a1a06',
+  antLeg:   '#1a0e02',
+  queen:    '#8b1a1a',
+  food:     '#f5d020',
+  foodGlow: 'rgba(245,208,32,0.3)',
+  text:     'rgba(220,200,160,0.85)',
+  textDim:  'rgba(180,155,110,0.55)',
+  chamber:  'rgba(100,65,28,0.6)',
+  notify:   'rgba(245,208,32,0.9)',
+};
+
+// ─── Tunnel graph ────────────────────────────────────────────
+// Nodes: {x, y, id}
+// Edges: {a, b}  (node ids)
+let nodes = [
+  {id:0, x:135, y:SURFACE_Y},       // surface entry
+  {id:1, x:135, y:130},             // top junction
+  {id:2, x:135, y:200},             // queen chamber centre
+  {id:3, x:70,  y:145},             // left branch
+  {id:4, x:200, y:145},             // right branch
+  {id:5, x:70,  y:240},             // lower left
+  {id:6, x:200, y:240},             // lower right
+];
+let edges = [
+  {a:0, b:1},
+  {a:1, b:2},
+  {a:1, b:3},
+  {a:1, b:4},
+  {a:2, b:5},
+  {a:2, b:6},
+];
+
+// food spots on the surface
+let foodSpots = generateFoodSpots(3);
+
+function generateFoodSpots(count) {
+  let spots = [];
+  for (let i = 0; i < count; i++) {
+    spots.push({
+      x: 20 + Math.random() * (W - 40),
+      y: SURFACE_Y - 6 - Math.random() * 18,
+      available: true,
+      glow: 0,
+    });
+  }
+  return spots;
+}
+
+// ─── Game state ──────────────────────────────────────────────
+const SAVE_KEY = 'antColony_v1';
+let state = loadState();
+
+function loadState() {
+  try {
+    const s = JSON.parse(localStorage.getItem(SAVE_KEY));
+    if (s && s.food !== undefined) return s;
+  } catch(e) {}
+  return { food: 0, totalFood: 0, antCount: 2, tunnelCount: edges.length };
+}
+
+function saveState() {
+  localStorage.setItem(SAVE_KEY, JSON.stringify({
+    food: Math.floor(state.food),
+    totalFood: Math.floor(state.totalFood),
+    antCount: state.antCount,
+    tunnelCount: state.tunnelCount,
+  }));
+}
+
+setInterval(saveState, 10000);
+
+// food per second display
+let foodThisSecond = 0, fps_display = 0, fps_timer = 0;
+
+// notifications
+let notifications = [];
+
+function notify(msg) {
+  notifications.push({ msg, life: 2.5, y: H - 60 });
+}
+
+// ─── Ant class ───────────────────────────────────────────────
+class Ant {
+  constructor(id) {
+    this.id = id;
+    this.x = 135;
+    this.y = 200;
+    this.carrying = false;
+    this.targetNode = null;
+    this.foodTarget = null;
+    this.state = 'WANDER'; // WANDER | TO_SURFACE | TO_FOOD | TO_QUEEN | TO_TUNNEL
+    this.speed = 28 + Math.random() * 18;
+    this.wiggle = 0;
+    this.wiggleSpeed = 3 + Math.random() * 2;
+    this.phase = Math.random() * Math.PI * 2;
+    this.legPhase = 0;
+    this.path = [];
+    this.pathIdx = 0;
+    // start near queen
+    this.x = nodes[2].x + (Math.random()-0.5)*20;
+    this.y = nodes[2].y + (Math.random()-0.5)*10;
+    this.facing = 1;
+    this.size = 3.5;
+  }
+
+  update(dt) {
+    this.wiggle = Math.sin(Date.now()/700 + this.phase) * 1.2;
+    this.legPhase += dt * 8;
+
+    if (this.state === 'WANDER') {
+      this.wander(dt);
+    } else {
+      this.followPath(dt);
+    }
+  }
+
+  wander(dt) {
+    // occasionally decide to go get food
+    if (Math.random() < dt * 0.4) {
+      this.decidePath();
+    }
+    // drift around queen chamber
+    let qx = nodes[2].x, qy = nodes[2].y;
+    let dx = qx + (Math.random()-0.5)*40 - this.x;
+    let dy = qy + (Math.random()-0.5)*20 - this.y;
+    let d = Math.sqrt(dx*dx+dy*dy);
+    if (d > 0) {
+      this.x += (dx/d) * this.speed * dt * 0.5;
+      this.y += (dy/d) * this.speed * dt * 0.5;
+      if (dx !== 0) this.facing = dx > 0 ? 1 : -1;
+    }
+  }
+
+  decidePath() {
+    // find an available food spot
+    let avail = foodSpots.filter(f => f.available);
+    if (avail.length === 0) { this.state = 'WANDER'; return; }
+    this.foodTarget = avail[Math.floor(Math.random() * avail.length)];
+    this.foodTarget.available = false;
+    // path: queen (2) → junction (1) → surface (0) → foodTarget
+    this.path = [nodes[2], nodes[1], nodes[0]];
+    this.pathIdx = 0;
+    this.state = 'TO_FOOD';
+  }
+
+  followPath(dt) {
+    if (this.pathIdx >= this.path.length) {
+      this.arriveAtDestination();
+      return;
+    }
+    let target = this.path[this.pathIdx];
+    let dx = target.x - this.x;
+    let dy = target.y - this.y;
+    let d = Math.sqrt(dx*dx + dy*dy);
+    if (d < 2) {
+      this.pathIdx++;
+      return;
+    }
+    let speed = this.speed * (this.carrying ? 0.72 : 1);
+    this.x += (dx/d) * speed * dt;
+    this.y += (dy/d) * speed * dt + this.wiggle * 0.15;
+    if (dx !== 0) this.facing = dx > 0 ? 1 : -1;
+  }
+
+  arriveAtDestination() {
+    if (this.state === 'TO_FOOD') {
+      // reached surface, go to food spot
+      if (this.foodTarget) {
+        // teleport to near the food
+        this.x = this.foodTarget.x;
+        this.y = this.foodTarget.y;
+        this.carrying = true;
+        this.foodTarget = null;
+        // path back: surface (0) → junction (1) → queen (2)
+        this.path = [nodes[0], nodes[1], nodes[2]];
+        this.pathIdx = 0;
+        this.state = 'TO_QUEEN';
+      } else {
+        this.state = 'WANDER';
+      }
+    } else if (this.state === 'TO_QUEEN') {
+      // delivered food
+      this.carrying = false;
+      state.food++;
+      state.totalFood++;
+      foodThisSecond++;
+      // respawn a food spot
+      foodSpots.push({
+        x: 20 + Math.random() * (W - 40),
+        y: SURFACE_Y - 6 - Math.random() * 18,
+        available: true,
+        glow: 0,
+      });
+      // check growth milestones
+      checkMilestones();
+      this.state = 'WANDER';
+    }
+  }
+
+  draw() {
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.scale(this.facing, 1);
+
+    const s = this.size;
+    const isQueen = false;
+
+    // legs (3 per side, animated)
+    ctx.strokeStyle = COL.antLeg;
+    ctx.lineWidth = 0.8;
+    for (let i = 0; i < 3; i++) {
+      let lx = (i - 1) * s * 0.9;
+      let wave = Math.sin(this.legPhase + i * 1.2) * s * 1.1;
+      ctx.beginPath();
+      ctx.moveTo(lx, 0);
+      ctx.lineTo(lx - s * 0.5, wave);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(lx, 0);
+      ctx.lineTo(lx + s * 0.5, -wave);
+      ctx.stroke();
+    }
+
+    // body: abdomen, thorax, head
+    ctx.fillStyle = this.carrying ? '#4a2a06' : COL.ant;
+    // abdomen
+    ctx.beginPath();
+    ctx.ellipse(-s*0.8, 0, s*1.1, s*0.7, 0, 0, Math.PI*2);
+    ctx.fill();
+    // thorax
+    ctx.beginPath();
+    ctx.ellipse(0, 0, s*0.65, s*0.55, 0, 0, Math.PI*2);
+    ctx.fill();
+    // head
+    ctx.beginPath();
+    ctx.ellipse(s*1.1, 0, s*0.7, s*0.55, 0, 0, Math.PI*2);
+    ctx.fill();
+    // antennae
+    ctx.strokeStyle = COL.ant;
+    ctx.lineWidth = 0.7;
+    ctx.beginPath();
+    ctx.moveTo(s*1.5, -s*0.2);
+    ctx.lineTo(s*2.2, -s*1.1);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(s*1.5, -s*0.1);
+    ctx.lineTo(s*2.4, -s*0.5);
+    ctx.stroke();
+
+    // food dot if carrying
+    if (this.carrying) {
+      ctx.fillStyle = COL.food;
+      ctx.beginPath();
+      ctx.arc(-s*0.8, -s*0.9, s*0.55, 0, Math.PI*2);
+      ctx.fill();
+    }
+
+    ctx.restore();
+  }
+}
+
+// ─── Queen ant ───────────────────────────────────────────────
+class Queen {
+  constructor() {
+    this.x = nodes[2].x;
+    this.y = nodes[2].y;
+    this.phase = 0;
+  }
+  draw() {
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    const s = 6;
+    // abdomen (large)
+    ctx.fillStyle = COL.queen;
+    ctx.beginPath();
+    ctx.ellipse(-s*0.9, 0, s*1.6, s*1.1, 0, 0, Math.PI*2);
+    ctx.fill();
+    // thorax
+    ctx.fillStyle = '#6b0f0f';
+    ctx.beginPath();
+    ctx.ellipse(0, 0, s*0.7, s*0.65, 0, 0, Math.PI*2);
+    ctx.fill();
+    // head
+    ctx.fillStyle = COL.queen;
+    ctx.beginPath();
+    ctx.ellipse(s*1.1, 0, s*0.8, s*0.65, 0, 0, Math.PI*2);
+    ctx.fill();
+    // crown dots
+    ctx.fillStyle = COL.food;
+    for (let i = -1; i <= 1; i++) {
+      ctx.beginPath();
+      ctx.arc(s*1.1 + i*s*0.35, -s*0.7, s*0.25, 0, Math.PI*2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+}
+
+// ─── Game objects ────────────────────────────────────────────
+let ants = [];
+let queen = new Queen();
+
+function spawnAnts(count) {
+  for (let i = 0; i < count; i++) {
+    ants.push(new Ant(ants.length));
+  }
+}
+spawnAnts(state.antCount);
+
+// ─── Milestones ──────────────────────────────────────────────
+function checkMilestones() {
+  // new ant every 15 food
+  let expectedAnts = 2 + Math.floor(state.totalFood / 15);
+  if (expectedAnts > state.antCount && state.antCount < 20) {
+    state.antCount++;
+    ants.push(new Ant(ants.length));
+    notify('New ant hatched!');
+  }
+  // new tunnel every 40 food
+  let expectedTunnels = 6 + Math.floor(state.totalFood / 40);
+  if (expectedTunnels > state.tunnelCount && state.tunnelCount < 18) {
+    state.tunnelCount++;
+    addTunnel();
+    notify('New tunnel dug!');
+  }
+}
+
+function addTunnel() {
+  // pick a random existing non-surface node and branch from it
+  let eligible = nodes.filter(n => n.y > SURFACE_Y + 30);
+  let base = eligible[Math.floor(Math.random() * eligible.length)];
+  let angle = (Math.random() * Math.PI * 0.7) + Math.PI * 0.15;
+  if (Math.random() < 0.5) angle = Math.PI - angle;
+  let len = 50 + Math.random() * 40;
+  let newNode = {
+    id: nodes.length,
+    x: Math.max(18, Math.min(W-18, base.x + Math.cos(angle)*len)),
+    y: Math.min(H-20, base.y + Math.abs(Math.sin(angle)*len)),
+  };
+  nodes.push(newNode);
+  edges.push({a: base.id, b: newNode.id});
+  // add a food spot further down
+  foodSpots.push({
+    x: 20 + Math.random() * (W - 40),
+    y: SURFACE_Y - 6 - Math.random() * 18,
+    available: true,
+    glow: 0,
+  });
+}
+
+// ─── Rendering ───────────────────────────────────────────────
+function drawSoil() {
+  // sky / transparent top strip
+  ctx.clearRect(0, 0, W, H);
+
+  // grass strip
+  ctx.fillStyle = COL.grass;
+  ctx.fillRect(0, SURFACE_Y - 6, W, 8);
+
+  // dirt layers
+  let grad = ctx.createLinearGradient(0, SURFACE_Y, 0, H);
+  grad.addColorStop(0,   COL.dirt1);
+  grad.addColorStop(0.4, COL.dirt2);
+  grad.addColorStop(1,   COL.dirt3);
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, SURFACE_Y + 2, W, H - SURFACE_Y - 2);
+
+  // subtle texture noise (pre-drawn static dots)
+  ctx.fillStyle = 'rgba(255,220,150,0.03)';
+  for (let i = 0; i < 80; i++) {
+    // use sin for pseudo-random static positions
+    let px = (Math.sin(i * 127.1) * 0.5 + 0.5) * W;
+    let py = SURFACE_Y + (Math.sin(i * 311.7) * 0.5 + 0.5) * (H - SURFACE_Y);
+    ctx.fillRect(px, py, 1, 1);
+  }
+}
+
+function drawTunnels() {
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+
+  edges.forEach(e => {
+    let a = nodes[e.a], b = nodes[e.b];
+    // outer glow
+    ctx.strokeStyle = 'rgba(140,90,40,0.18)';
+    ctx.lineWidth = 14;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+    // main tunnel
+    ctx.strokeStyle = COL.tunnel;
+    ctx.lineWidth = 9;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+  });
+}
+
+function drawChambers() {
+  // queen chamber
+  let qn = nodes[2];
+  ctx.save();
+  ctx.beginPath();
+  ctx.ellipse(qn.x, qn.y, 24, 16, 0, 0, Math.PI*2);
+  ctx.fillStyle = COL.chamber;
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawFood() {
+  let now = Date.now() / 600;
+  foodSpots.forEach(f => {
+    if (!f.available) return;
+    // glow pulse
+    let glow = 0.15 + 0.12 * Math.sin(now + f.x);
+    ctx.beginPath();
+    ctx.arc(f.x, f.y, 6, 0, Math.PI*2);
+    ctx.fillStyle = `rgba(245,208,32,${glow})`;
+    ctx.fill();
+    // dot
+    ctx.beginPath();
+    ctx.arc(f.x, f.y, 2.5, 0, Math.PI*2);
+    ctx.fillStyle = COL.food;
+    ctx.fill();
+  });
+}
+
+function drawStats() {
+  ctx.font = '9px monospace';
+  ctx.textAlign = 'right';
+  ctx.fillStyle = COL.textDim;
+  ctx.fillText(`food: ${Math.floor(state.food)}`, W - 8, 14);
+  ctx.fillText(`ants: ${state.antCount}`, W - 8, 25);
+  ctx.fillText(`+${fps_display}/s`, W - 8, 36);
+}
+
+function drawNotifications(dt) {
+  notifications = notifications.filter(n => n.life > 0);
+  notifications.forEach(n => {
+    n.life -= dt;
+    n.y -= dt * 10;
+    let alpha = Math.min(1, n.life * 1.5);
+    ctx.save();
+    ctx.font = 'bold 9px monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = `rgba(245,208,32,${alpha})`;
+    ctx.fillText(n.msg, W / 2, n.y);
+    ctx.restore();
+  });
+}
+
+// ─── Game loop ───────────────────────────────────────────────
+let lastTime = null;
+
+function loop(ts) {
+  if (!lastTime) lastTime = ts;
+  let dt = Math.min((ts - lastTime) / 1000, 0.1);
+  lastTime = ts;
+
+  // fps tracker
+  fps_timer += dt;
+  if (fps_timer >= 1) {
+    fps_display = foodThisSecond;
+    foodThisSecond = 0;
+    fps_timer = 0;
+  }
+
+  // update
+  ants.forEach(a => a.update(dt));
+
+  // draw
+  drawSoil();
+  drawTunnels();
+  drawChambers();
+  drawFood();
+  ants.forEach(a => a.draw());
+  queen.draw();
+  drawStats();
+  drawNotifications(dt);
+
+  requestAnimationFrame(loop);
+}
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
