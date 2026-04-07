@@ -3,520 +3,423 @@
 <head>
 <meta charset="utf-8">
 <style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  html, body {
-    width: 270px; height: 340px;
-    background: transparent;
-    overflow: hidden;
-    user-select: none;
-  }
-  canvas {
-    display: block;
-    background: transparent;
-  }
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:270px;height:340px;background:transparent;overflow:hidden;user-select:none}
+canvas{display:block;position:absolute;top:0;left:0;image-rendering:pixelated;image-rendering:crisp-edges}
+#shop-btn{position:absolute;bottom:8px;left:50%;transform:translateX(-50%);background:#2A1406;border:1px solid #6A3A18;color:#F0C060;font:10px/1 'Courier New',monospace;padding:4px 14px;cursor:pointer;z-index:50;letter-spacing:1px;white-space:nowrap}
+#shop-btn:hover{background:#3A1E0A}
+#shop{position:absolute;bottom:0;left:0;width:270px;background:rgba(10,5,2,0.97);border-top:2px solid #7A4A20;padding:8px;z-index:60;transform:translateY(110%);transition:transform 0.25s cubic-bezier(0.25,0.46,0.45,0.94);pointer-events:none}
+#shop.open{transform:translateY(0);pointer-events:auto}
+#shop-header{display:flex;justify-content:space-between;align-items:center;color:#F0C060;font:bold 10px/1 'Courier New',monospace;letter-spacing:2px;margin-bottom:4px}
+#shop-close{background:#3A1E08;border:1px solid #6A3A18;color:#F0C060;cursor:pointer;padding:1px 6px;font-size:10px}
+#shop-food{color:#F8D820;font:9px 'Courier New',monospace;margin-bottom:6px}
+#upg-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
+.upg-btn{background:#1E0E06;border:1px solid #4A2810;color:#C8A070;font:7px/1.3 'Courier New',monospace;cursor:pointer;padding:4px 2px;text-align:center;height:52px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;transition:background 0.1s}
+.upg-btn:hover:not(.maxed):not(.locked){background:#2E1A0A;border-color:#7A4828}
+.upg-btn.maxed{background:#0A1E0A;border-color:#2A5A2A;color:#5AAA5A;cursor:default}
+.upg-btn.locked{opacity:0.4;cursor:not-allowed}
+.upg-icon{font-size:13px;line-height:1;display:block}
+.upg-name{font-size:6.5px;color:#E0C090}
+.upg-desc{font-size:6px;color:#A08060}
+.upg-cost{font-size:7.5px;color:#F8D820}
+#evt-overlay{position:absolute;top:0;left:0;width:270px;height:340px;display:flex;align-items:center;justify-content:center;z-index:70;pointer-events:none}
+#evt-overlay.show{pointer-events:auto}
+#evt-box{background:rgba(8,4,2,0.96);border:2px solid #7A4A20;padding:12px 16px;text-align:center;min-width:180px;max-width:240px;transform:translateY(-18px) scale(0.88);opacity:0;transition:all 0.3s cubic-bezier(0.34,1.56,0.64,1);cursor:pointer}
+#evt-overlay.show #evt-box{transform:translateY(0) scale(1);opacity:1}
+#evt-overlay.good #evt-box{border-color:#3A8A3A;box-shadow:0 0 18px rgba(80,200,80,0.2)}
+#evt-overlay.bad #evt-box{border-color:#8A2A2A;box-shadow:0 0 18px rgba(200,60,60,0.2)}
+#evt-icon{font-size:28px;display:block;margin-bottom:5px}
+#evt-name{font:bold 10px/1.2 'Courier New',monospace;color:#F0D090;letter-spacing:1px;display:block;margin-bottom:4px}
+#evt-desc{font:8px/1.5 'Courier New',monospace;color:#B09060;display:block;margin-bottom:7px}
+#evt-bar{height:3px;background:#2A1808;border-radius:2px;overflow:hidden}
+#evt-fill{height:100%;background:#6A4028;transition:width 0.1s linear;width:100%}
+#evt-overlay.good #evt-fill{background:#3A7A3A}
+#evt-overlay.bad #evt-fill{background:#7A2A2A}
+#toast{position:absolute;top:26px;left:50%;transform:translateX(-50%);background:rgba(248,216,32,0.95);color:#2A1506;font:bold 8px 'Courier New',monospace;padding:3px 10px;white-space:nowrap;opacity:0;transition:opacity 0.3s;pointer-events:none;z-index:80;letter-spacing:1px}
+#toast.show{opacity:1}
 </style>
 </head>
 <body>
 <canvas id="c" width="270" height="340"></canvas>
+<button id="shop-btn">&#x1FA99; SHOP</button>
+<div id="shop">
+  <div id="shop-header"><span>COLONY SHOP</span><button id="shop-close">&#x2715;</button></div>
+  <div id="shop-food">&#x1F34E; 0 food</div>
+  <div id="upg-grid"></div>
+</div>
+<div id="evt-overlay">
+  <div id="evt-box">
+    <span id="evt-icon"></span><span id="evt-name"></span>
+    <span id="evt-desc"></span>
+    <div id="evt-bar"><div id="evt-fill"></div></div>
+  </div>
+</div>
+<div id="toast"></div>
 <script>
-const canvas = document.getElementById('c');
-const ctx = canvas.getContext('2d');
-const W = 270, H = 340;
-const SURFACE_Y = 60; // y where ground begins
+'use strict';
 
-// ─── Palette ────────────────────────────────────────────────
-const COL = {
-  sky:      'rgba(20,28,40,0)',        // transparent sky
-  dirt1:    'rgba(62,38,18,0.82)',
-  dirt2:    'rgba(52,30,12,0.88)',
-  dirt3:    'rgba(40,22,8,0.92)',
-  tunnel:   'rgba(90,58,28,0.55)',
-  grass:    'rgba(60,110,40,0.85)',
-  ant:      '#2a1a06',
-  antLeg:   '#1a0e02',
-  queen:    '#8b1a1a',
-  food:     '#f5d020',
-  foodGlow: 'rgba(245,208,32,0.3)',
-  text:     'rgba(220,200,160,0.85)',
-  textDim:  'rgba(180,155,110,0.55)',
-  chamber:  'rgba(100,65,28,0.6)',
-  notify:   'rgba(245,208,32,0.9)',
-};
+// === VIRTUAL CANVAS ===
+const VW=90,VH=113,SURFACE_Y=20;
+const display=document.getElementById('c');
+const dctx=display.getContext('2d');
+dctx.imageSmoothingEnabled=false;
+const vcanvas=new OffscreenCanvas(VW,VH);
+const vc=vcanvas.getContext('2d');
+vc.imageSmoothingEnabled=false;
 
-// ─── Tunnel graph ────────────────────────────────────────────
-// Nodes: {x, y, id}
-// Edges: {a, b}  (node ids)
-let nodes = [
-  {id:0, x:135, y:SURFACE_Y},       // surface entry
-  {id:1, x:135, y:130},             // top junction
-  {id:2, x:135, y:200},             // queen chamber centre
-  {id:3, x:70,  y:145},             // left branch
-  {id:4, x:200, y:145},             // right branch
-  {id:5, x:70,  y:240},             // lower left
-  {id:6, x:200, y:240},             // lower right
+// === STATE ===
+const SAVE_KEY='antColony_v3';
+function defState(){return{food:0,totalFood:0,antCount:2,upg:{speed:0,carry:0,antMax:0,sniffer:0,queenBoost:0,soldier:0},mult:1,multTimer:0,queenTimer:0,eventTimer:55+Math.random()*45,permMult:1,rainTimer:0};}
+function loadState(){try{const s=JSON.parse(localStorage.getItem(SAVE_KEY));if(s&&typeof s.food==='number'){const d=defState();return{...d,...s,upg:{...d.upg,...s.upg}};}}catch(e){}return defState();}
+let state=loadState();
+setInterval(()=>localStorage.setItem(SAVE_KEY,JSON.stringify(state)),10000);
+
+// === UPGRADES ===
+const UPGRADES=[
+  {id:'speed',icon:'\u26A1',name:'Ant Speed',levels:[{desc:'30% faster',cost:30},{desc:'70% faster',cost:100},{desc:'2x speed',cost:280}],getVal(){return[1,1.3,1.7,2.0][state.upg.speed];}},
+  {id:'carry',icon:'\uD83C\uDF92',name:'Bigger Haul',levels:[{desc:'Carry x2',cost:50},{desc:'Carry x4',cost:180}],getVal(){return[1,2,4][state.upg.carry];}},
+  {id:'antMax',icon:'\uD83D\uDC1C',name:'More Ants',levels:[{desc:'Max 8',cost:40},{desc:'Max 14',cost:140},{desc:'Max 25',cost:450}],getVal(){return[5,8,14,25][state.upg.antMax];}},
+  {id:'sniffer',icon:'\uD83C\uDF3F',name:'Food Sniffer',levels:[{desc:'+3 spots',cost:55},{desc:'+6 spots',cost:160}],getVal(){return[0,3,6][state.upg.sniffer];}},
+  {id:'queenBoost',icon:'\uD83D\uDC51',name:"Queen Gift",levels:[{desc:'Slow drip',cost:80},{desc:'Med drip',cost:240},{desc:'Fast drip',cost:650}],getVal(){return[0,12,6,2][state.upg.queenBoost];}},
+  {id:'soldier',icon:'\uD83D\uDEE1\uFE0F',name:'Soldiers',levels:[{desc:'25% guard',cost:70},{desc:'55% guard',cost:210},{desc:'85% guard',cost:520}],getVal(){return[0,0.25,0.55,0.85][state.upg.soldier];}},
 ];
-let edges = [
-  {a:0, b:1},
-  {a:1, b:2},
-  {a:1, b:3},
-  {a:1, b:4},
-  {a:2, b:5},
-  {a:2, b:6},
+function upgById(id){return UPGRADES.find(u=>u.id===id);}
+
+// === EVENTS ===
+const EVENTS=[
+  {id:'mushroom',icon:'\uD83C\uDF44',name:'Mushroom Bloom!',type:'good',
+   desc(){return'Mushrooms sprouted! +'+Math.floor(state.food*0.4+60)+' food';},
+   apply(){state.food+=Math.floor(state.food*0.4+60);}},
+  {id:'raid',icon:'\u2694\uFE0F',name:'Ant Raid!',type:'bad',
+   desc(){const p=upgById('soldier').getVal();return'Rivals attack! '+(p>0?'Soldiers hold! ':'')+'Lost '+Math.floor(state.food*0.25*(1-p))+' food';},
+   apply(){const p=upgById('soldier').getVal();state.food=Math.max(0,state.food-Math.floor(state.food*0.25*(1-p)));}},
+  {id:'frenzy',icon:'\uD83D\uDC51',name:"Queen Frenzy!",type:'good',
+   desc(){return'The queen rampages! 3 free ants!';},
+   apply(){const mx=upgById('antMax').getVal();for(let i=0;i<3&&ants.length<mx;i++)spawnAnt();state.antCount=ants.length;}},
+  {id:'lucky',icon:'\uD83D\uDC8E',name:'Lucky Find!',type:'good',
+   desc(){return'A worker found a gem! +200 food';},apply(){state.food+=200;}},
+  {id:'sugar',icon:'\u26A1',name:'Sugar Rush!',type:'good',
+   desc(){return'3x food for 25 seconds!';},
+   apply(){state.mult=3;state.multTimer=25;showToast('\u26A1 3x RUSH! 25s');}},
+  {id:'rain',icon:'\uD83C\uDF27\uFE0F',name:'Heavy Rain!',type:'bad',
+   desc(){return'Flooded! Ants slowed 20s.';},apply(){state.rainTimer=20;}},
+  {id:'honey',icon:'\uD83C\uDF6F',name:'Honey Spill!',type:'good',
+   desc(){return'+100 food & 2x income 30s!';},
+   apply(){state.food+=100;if(state.mult<2){state.mult=2;state.multTimer=30;}showToast('\uD83C\uDF6F 2x HONEY! 30s');}},
+  {id:'fungus',icon:'\uD83E\uDDA0',name:'Fungal Outbreak!',type:'bad',
+   desc(){const l=Math.min(ants.length-2,2);return'Fungus claims '+l+' ant'+(l!==1?'s':'')+'!';},
+   apply(){const l=Math.min(ants.length-2,2);for(let i=0;i<l;i++)ants.pop();state.antCount=ants.length;}},
+  {id:'spring',icon:'\uD83C\uDF38',name:'Spring Bloom!',type:'good',
+   desc(){return'5 bonus food spots 40s!';},apply(){for(let i=0;i<5;i++)spawnFoodSpot(true,40);}},
+  {id:'cavein',icon:'\uD83D\uDCA5',name:'Cave-In!',type:'bad',
+   desc(){return'Tunnel collapses! +80 food.';},
+   apply(){if(nodes.length>7){nodes.pop();edges.pop();}state.food+=80;}},
+  {id:'jelly',icon:'\uD83C\uDF76',name:'Royal Jelly!',type:'good',
+   desc(){return'Permanent +15% multiplier!';},
+   apply(){state.permMult=(state.permMult||1)+0.15;showToast('\uD83C\uDF76 +15% FOREVER!');}},
 ];
 
-// food spots on the surface
-let foodSpots = generateFoodSpots(3);
+// === TUNNELS ===
+let nodes=[
+  {id:0,x:45,y:SURFACE_Y},{id:1,x:45,y:38},{id:2,x:45,y:58},
+  {id:3,x:22,y:44},{id:4,x:68,y:44},{id:5,x:22,y:76},{id:6,x:68,y:76},
+];
+let edges=[{a:0,b:1},{a:1,b:2},{a:1,b:3},{a:1,b:4},{a:2,b:5},{a:2,b:6}];
 
-function generateFoodSpots(count) {
-  let spots = [];
-  for (let i = 0; i < count; i++) {
-    spots.push({
-      x: 20 + Math.random() * (W - 40),
-      y: SURFACE_Y - 6 - Math.random() * 18,
-      available: true,
-      glow: 0,
-    });
-  }
-  return spots;
+function addTunnel(){
+  const el=nodes.filter(n=>n.y>SURFACE_Y+12);
+  const base=el[Math.floor(Math.random()*el.length)];
+  const angle=0.2+Math.random()*2.7;
+  const len=16+Math.random()*24;
+  const nx=Math.max(6,Math.min(VW-6,base.x+Math.cos(angle)*len));
+  const ny=Math.min(VH-8,base.y+Math.abs(Math.sin(angle))*len*0.75);
+  nodes.push({id:nodes.length,x:Math.floor(nx),y:Math.floor(ny)});
+  edges.push({a:base.id,b:nodes.length-1});
+  spawnFoodSpot();
 }
 
-// ─── Game state ──────────────────────────────────────────────
-const SAVE_KEY = 'antColony_v1';
-let state = loadState();
+// === FOOD SPOTS ===
+let foodSpots=[];
+function spawnFoodSpot(temp=false,tempTimer=0){
+  foodSpots.push({x:5+Math.random()*(VW-10),y:4+Math.random()*(SURFACE_Y-6),available:true,temp,tempTimer});
+}
+for(let i=0;i<4+upgById('sniffer').getVal();i++)spawnFoodSpot();
 
-function loadState() {
-  try {
-    const s = JSON.parse(localStorage.getItem(SAVE_KEY));
-    if (s && s.food !== undefined) return s;
-  } catch(e) {}
-  return { food: 0, totalFood: 0, antCount: 2, tunnelCount: edges.length };
+// === PIXEL SPRITES ===
+function drawAntVc(vx,vy,facing,carrying,anim){
+  const ao=anim>0?1:0;
+  vc.save();
+  vc.translate(Math.floor(vx),Math.floor(vy));
+  if(facing<0)vc.scale(-1,1);
+  vc.fillStyle='#2A1508';vc.fillRect(-6,-2,5,3);
+  vc.fillStyle='#5C3010';vc.fillRect(-5,-2,3,1);
+  vc.fillStyle='#150902';vc.fillRect(-1,-1,1,2);
+  vc.fillStyle='#2A1508';vc.fillRect(0,-2,3,3);
+  vc.fillStyle='#150902';vc.fillRect(3,-1,1,2);
+  vc.fillStyle='#2A1508';vc.fillRect(4,-2,3,2);
+  vc.fillStyle='#F0C090';vc.fillRect(6,-2,1,1);
+  vc.fillStyle='#150902';
+  vc.fillRect(5,-3,1,1);vc.fillRect(6,-4,1,1);
+  vc.fillRect(4,-3,1,1);vc.fillRect(3,-4,1,1);
+  vc.fillRect(-6,1+ao,1,2);vc.fillRect(-5,1+(1-ao),1,2);
+  vc.fillRect(-3,1+(1-ao),1,2);vc.fillRect(-2,1+ao,1,2);
+  vc.fillRect(0,1+ao,1,2);vc.fillRect(1,1+(1-ao),1,2);
+  if(carrying){vc.fillStyle='#F8D820';vc.fillRect(-6,-4,3,2);vc.fillStyle='#FFFFA0';vc.fillRect(-6,-4,1,1);}
+  vc.restore();
 }
 
-function saveState() {
-  localStorage.setItem(SAVE_KEY, JSON.stringify({
-    food: Math.floor(state.food),
-    totalFood: Math.floor(state.totalFood),
-    antCount: state.antCount,
-    tunnelCount: state.tunnelCount,
-  }));
+function drawQueenVc(vx,vy){
+  vc.save();vc.translate(Math.floor(vx),Math.floor(vy));
+  vc.fillStyle='#880818';vc.fillRect(-11,-3,7,6);
+  vc.fillStyle='#CC2828';vc.fillRect(-10,-3,4,1);
+  vc.fillStyle='#4A0808';vc.fillRect(-4,-1,1,2);
+  vc.fillStyle='#880818';vc.fillRect(-3,-3,4,5);
+  vc.fillStyle='#4A0808';vc.fillRect(1,-1,1,2);
+  vc.fillStyle='#880818';vc.fillRect(2,-3,5,4);
+  vc.fillStyle='#F0C090';vc.fillRect(6,-3,1,1);
+  vc.fillStyle='#F8CC18';vc.fillRect(2,-4,1,1);vc.fillRect(4,-4,1,1);vc.fillRect(3,-5,1,1);
+  vc.fillStyle='#4A0808';
+  vc.fillRect(-3,2,1,3);vc.fillRect(-2,2,1,3);vc.fillRect(-1,2,1,3);
+  vc.fillRect(-9,2,1,3);vc.fillRect(-8,2,1,3);vc.fillRect(-7,2,1,3);
+  vc.restore();
 }
 
-setInterval(saveState, 10000);
-
-// food per second display
-let foodThisSecond = 0, fps_display = 0, fps_timer = 0;
-
-// notifications
-let notifications = [];
-
-function notify(msg) {
-  notifications.push({ msg, life: 2.5, y: H - 60 });
+// === ANT CLASS ===
+class Ant{
+  constructor(){
+    this.x=nodes[2].x+(Math.random()-0.5)*10;
+    this.y=nodes[2].y+(Math.random()-0.5)*6;
+    this.baseSpeed=11+Math.random()*8;
+    this.carrying=false;this.foodTarget=null;
+    this.path=[];this.pathIdx=0;this.state='WANDER';
+    this.facing=1;this.anim=0;this.phase=Math.random()*Math.PI*2;
+  }
+  get speed(){const s=this.baseSpeed*upgById('speed').getVal();return state.rainTimer>0?s*0.35:s;}
+  update(dt){
+    this.anim=Math.sin(Date.now()/130+this.phase);
+    if(this.state==='WANDER'){if(Math.random()<dt*0.55)this.findFood();else this.drift(dt);}
+    else this.move(dt);
+  }
+  drift(dt){
+    const qx=nodes[2].x,qy=nodes[2].y;
+    const tx=qx+(Math.random()-0.5)*26,ty=qy+(Math.random()-0.5)*12;
+    const dx=tx-this.x,dy=ty-this.y,d=Math.sqrt(dx*dx+dy*dy);
+    if(d>0.5){this.x+=dx/d*this.speed*dt*0.4;this.y+=dy/d*this.speed*dt*0.4;if(Math.abs(dx)>0.1)this.facing=dx>0?1:-1;}
+  }
+  findFood(){
+    const av=foodSpots.filter(f=>f.available);if(!av.length)return;
+    this.foodTarget=av[Math.floor(Math.random()*av.length)];
+    this.foodTarget.available=false;
+    this.path=[nodes[1],nodes[0]];this.pathIdx=0;this.state='TO_FOOD';
+  }
+  move(dt){
+    if(this.pathIdx>=this.path.length){this.arrive();return;}
+    const tgt=this.path[this.pathIdx];
+    const dx=tgt.x-this.x,dy=tgt.y-this.y,d=Math.sqrt(dx*dx+dy*dy);
+    if(d<1.5){this.pathIdx++;return;}
+    const spd=this.carrying?this.speed*0.72:this.speed;
+    this.x+=dx/d*spd*dt;this.y+=dy/d*spd*dt;
+    if(Math.abs(dx)>0.2)this.facing=dx>0?1:-1;
+  }
+  arrive(){
+    if(this.state==='TO_FOOD'){
+      if(this.foodTarget){this.x=this.foodTarget.x;this.y=this.foodTarget.y;this.carrying=true;this.foodTarget=null;}
+      this.path=[nodes[0],nodes[1],nodes[2]];this.pathIdx=0;this.state='TO_QUEEN';
+    }else{
+      const gain=upgById('carry').getVal()*state.mult*(state.permMult||1);
+      state.food+=gain;state.totalFood+=gain;foodAcc+=gain;
+      spawnFoodSpot();this.carrying=false;this.state='WANDER';checkMilestones();
+    }
+  }
+  draw(){drawAntVc(this.x,this.y,this.facing,this.carrying,this.anim);}
 }
 
-// ─── Ant class ───────────────────────────────────────────────
-class Ant {
-  constructor(id) {
-    this.id = id;
-    this.x = 135;
-    this.y = 200;
-    this.carrying = false;
-    this.targetNode = null;
-    this.foodTarget = null;
-    this.state = 'WANDER'; // WANDER | TO_SURFACE | TO_FOOD | TO_QUEEN | TO_TUNNEL
-    this.speed = 28 + Math.random() * 18;
-    this.wiggle = 0;
-    this.wiggleSpeed = 3 + Math.random() * 2;
-    this.phase = Math.random() * Math.PI * 2;
-    this.legPhase = 0;
-    this.path = [];
-    this.pathIdx = 0;
-    // start near queen
-    this.x = nodes[2].x + (Math.random()-0.5)*20;
-    this.y = nodes[2].y + (Math.random()-0.5)*10;
-    this.facing = 1;
-    this.size = 3.5;
-  }
+// === COLONY ===
+let ants=[];
+function spawnAnt(){ants.push(new Ant());}
+function growColony(){const mx=upgById('antMax').getVal();while(ants.length<state.antCount&&ants.length<mx)spawnAnt();}
+for(let i=0;i<state.antCount;i++)spawnAnt();
 
-  update(dt) {
-    this.wiggle = Math.sin(Date.now()/700 + this.phase) * 1.2;
-    this.legPhase += dt * 8;
-
-    if (this.state === 'WANDER') {
-      this.wander(dt);
-    } else {
-      this.followPath(dt);
-    }
-  }
-
-  wander(dt) {
-    // occasionally decide to go get food
-    if (Math.random() < dt * 0.4) {
-      this.decidePath();
-    }
-    // drift around queen chamber
-    let qx = nodes[2].x, qy = nodes[2].y;
-    let dx = qx + (Math.random()-0.5)*40 - this.x;
-    let dy = qy + (Math.random()-0.5)*20 - this.y;
-    let d = Math.sqrt(dx*dx+dy*dy);
-    if (d > 0) {
-      this.x += (dx/d) * this.speed * dt * 0.5;
-      this.y += (dy/d) * this.speed * dt * 0.5;
-      if (dx !== 0) this.facing = dx > 0 ? 1 : -1;
-    }
-  }
-
-  decidePath() {
-    // find an available food spot
-    let avail = foodSpots.filter(f => f.available);
-    if (avail.length === 0) { this.state = 'WANDER'; return; }
-    this.foodTarget = avail[Math.floor(Math.random() * avail.length)];
-    this.foodTarget.available = false;
-    // path: queen (2) → junction (1) → surface (0) → foodTarget
-    this.path = [nodes[2], nodes[1], nodes[0]];
-    this.pathIdx = 0;
-    this.state = 'TO_FOOD';
-  }
-
-  followPath(dt) {
-    if (this.pathIdx >= this.path.length) {
-      this.arriveAtDestination();
-      return;
-    }
-    let target = this.path[this.pathIdx];
-    let dx = target.x - this.x;
-    let dy = target.y - this.y;
-    let d = Math.sqrt(dx*dx + dy*dy);
-    if (d < 2) {
-      this.pathIdx++;
-      return;
-    }
-    let speed = this.speed * (this.carrying ? 0.72 : 1);
-    this.x += (dx/d) * speed * dt;
-    this.y += (dy/d) * speed * dt + this.wiggle * 0.15;
-    if (dx !== 0) this.facing = dx > 0 ? 1 : -1;
-  }
-
-  arriveAtDestination() {
-    if (this.state === 'TO_FOOD') {
-      // reached surface, go to food spot
-      if (this.foodTarget) {
-        // teleport to near the food
-        this.x = this.foodTarget.x;
-        this.y = this.foodTarget.y;
-        this.carrying = true;
-        this.foodTarget = null;
-        // path back: surface (0) → junction (1) → queen (2)
-        this.path = [nodes[0], nodes[1], nodes[2]];
-        this.pathIdx = 0;
-        this.state = 'TO_QUEEN';
-      } else {
-        this.state = 'WANDER';
-      }
-    } else if (this.state === 'TO_QUEEN') {
-      // delivered food
-      this.carrying = false;
-      state.food++;
-      state.totalFood++;
-      foodThisSecond++;
-      // respawn a food spot
-      foodSpots.push({
-        x: 20 + Math.random() * (W - 40),
-        y: SURFACE_Y - 6 - Math.random() * 18,
-        available: true,
-        glow: 0,
-      });
-      // check growth milestones
-      checkMilestones();
-      this.state = 'WANDER';
-    }
-  }
-
-  draw() {
-    ctx.save();
-    ctx.translate(this.x, this.y);
-    ctx.scale(this.facing, 1);
-
-    const s = this.size;
-    const isQueen = false;
-
-    // legs (3 per side, animated)
-    ctx.strokeStyle = COL.antLeg;
-    ctx.lineWidth = 0.8;
-    for (let i = 0; i < 3; i++) {
-      let lx = (i - 1) * s * 0.9;
-      let wave = Math.sin(this.legPhase + i * 1.2) * s * 1.1;
-      ctx.beginPath();
-      ctx.moveTo(lx, 0);
-      ctx.lineTo(lx - s * 0.5, wave);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(lx, 0);
-      ctx.lineTo(lx + s * 0.5, -wave);
-      ctx.stroke();
-    }
-
-    // body: abdomen, thorax, head
-    ctx.fillStyle = this.carrying ? '#4a2a06' : COL.ant;
-    // abdomen
-    ctx.beginPath();
-    ctx.ellipse(-s*0.8, 0, s*1.1, s*0.7, 0, 0, Math.PI*2);
-    ctx.fill();
-    // thorax
-    ctx.beginPath();
-    ctx.ellipse(0, 0, s*0.65, s*0.55, 0, 0, Math.PI*2);
-    ctx.fill();
-    // head
-    ctx.beginPath();
-    ctx.ellipse(s*1.1, 0, s*0.7, s*0.55, 0, 0, Math.PI*2);
-    ctx.fill();
-    // antennae
-    ctx.strokeStyle = COL.ant;
-    ctx.lineWidth = 0.7;
-    ctx.beginPath();
-    ctx.moveTo(s*1.5, -s*0.2);
-    ctx.lineTo(s*2.2, -s*1.1);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(s*1.5, -s*0.1);
-    ctx.lineTo(s*2.4, -s*0.5);
-    ctx.stroke();
-
-    // food dot if carrying
-    if (this.carrying) {
-      ctx.fillStyle = COL.food;
-      ctx.beginPath();
-      ctx.arc(-s*0.8, -s*0.9, s*0.55, 0, Math.PI*2);
-      ctx.fill();
-    }
-
-    ctx.restore();
-  }
+function checkMilestones(){
+  const mx=upgById('antMax').getVal();
+  const want=Math.min(mx,2+Math.floor(state.totalFood/18));
+  if(want>ants.length){spawnAnt();state.antCount=ants.length;addNotif('\uD83D\uDC1C Ant hatched!','#80FF80');}
+  if(6+Math.floor(state.totalFood/45)>edges.length&&edges.length<20){addTunnel();addNotif('\u26CF\uFE0F Tunnel dug!','#F8D820');}
 }
 
-// ─── Queen ant ───────────────────────────────────────────────
-class Queen {
-  constructor() {
-    this.x = nodes[2].x;
-    this.y = nodes[2].y;
-    this.phase = 0;
+let notifs=[];
+function addNotif(msg,color){notifs.push({msg,color:color||'#F8D820',y:295,life:2.2});}
+
+// === EVENT SYSTEM ===
+let activeEvt=null,evtDisplayTime=0,flashAlpha=0,flashColor='rgba(80,255,80,0.12)';
+const evtOverlay=document.getElementById('evt-overlay');
+const evtIconEl=document.getElementById('evt-icon');
+const evtNameEl=document.getElementById('evt-name');
+const evtDescEl=document.getElementById('evt-desc');
+const evtFillEl=document.getElementById('evt-fill');
+const evtBox=document.getElementById('evt-box');
+
+function fireEvent(){
+  const evt=EVENTS[Math.floor(Math.random()*EVENTS.length)];
+  activeEvt=evt;evtDisplayTime=3.8;
+  evtIconEl.textContent=evt.icon;evtNameEl.textContent=evt.name;evtDescEl.textContent=evt.desc();
+  evtFillEl.style.width='100%';
+  evtOverlay.className='show '+evt.type;
+  evtBox.onclick=dismissEvt;evt.apply();
+  state.eventTimer=45+Math.random()*75;
+  flashColor=evt.type==='good'?'rgba(80,255,80,0.1)':'rgba(255,60,60,0.1)';flashAlpha=1;
+}
+function dismissEvt(){evtOverlay.className='';activeEvt=null;evtDisplayTime=0;}
+
+const toastEl=document.getElementById('toast');
+let toastTimer=0;
+function showToast(msg){toastEl.textContent=msg;toastEl.className='show';toastTimer=3;}
+
+let foodAcc=0,foodPerSec=0,rateTimer=0;
+
+// === RENDER WORLD ===
+function renderWorld(){
+  vc.clearRect(0,0,VW,VH);
+  // Soil gradient
+  const g=vc.createLinearGradient(0,SURFACE_Y,0,VH);
+  g.addColorStop(0,'#3A2012');g.addColorStop(0.45,'#281408');g.addColorStop(1,'#180C04');
+  vc.fillStyle=g;vc.fillRect(0,SURFACE_Y,VW,VH-SURFACE_Y);
+  // Texture dots
+  vc.fillStyle='rgba(255,200,120,0.05)';
+  for(let i=0;i<70;i++)vc.fillRect(Math.floor((Math.sin(i*127.1)*0.5+0.5)*VW),Math.floor(SURFACE_Y+(Math.sin(i*311.7)*0.5+0.5)*(VH-SURFACE_Y)),1,1);
+  // Grass
+  for(let x=0;x<VW;x++){
+    const h=2+Math.floor((Math.sin(x*1.57)*0.5+0.5)*2);
+    vc.fillStyle=(Math.floor(x/2)%2===0)?'#3C8C18':'#2A6010';
+    vc.fillRect(x,SURFACE_Y-h,1,h+2);
   }
-  draw() {
-    ctx.save();
-    ctx.translate(this.x, this.y);
-    const s = 6;
-    // abdomen (large)
-    ctx.fillStyle = COL.queen;
-    ctx.beginPath();
-    ctx.ellipse(-s*0.9, 0, s*1.6, s*1.1, 0, 0, Math.PI*2);
-    ctx.fill();
-    // thorax
-    ctx.fillStyle = '#6b0f0f';
-    ctx.beginPath();
-    ctx.ellipse(0, 0, s*0.7, s*0.65, 0, 0, Math.PI*2);
-    ctx.fill();
-    // head
-    ctx.fillStyle = COL.queen;
-    ctx.beginPath();
-    ctx.ellipse(s*1.1, 0, s*0.8, s*0.65, 0, 0, Math.PI*2);
-    ctx.fill();
-    // crown dots
-    ctx.fillStyle = COL.food;
-    for (let i = -1; i <= 1; i++) {
-      ctx.beginPath();
-      ctx.arc(s*1.1 + i*s*0.35, -s*0.7, s*0.25, 0, Math.PI*2);
-      ctx.fill();
-    }
-    ctx.restore();
+  // Rain
+  if(state.rainTimer>0){
+    const rt=Date.now()/180;vc.fillStyle='rgba(100,160,230,0.55)';
+    for(let i=0;i<18;i++)vc.fillRect(Math.floor((i*17+rt*4)%VW),Math.floor((i*29+rt*9)%SURFACE_Y),1,2);
   }
+  // Tunnels
+  vc.lineCap='round';vc.lineJoin='round';
+  edges.forEach(e=>{
+    const a=nodes[e.a],b=nodes[e.b];
+    vc.strokeStyle='rgba(0,0,0,0.45)';vc.lineWidth=9;vc.beginPath();vc.moveTo(a.x,a.y);vc.lineTo(b.x,b.y);vc.stroke();
+    vc.strokeStyle='#3E1E0C';vc.lineWidth=7;vc.beginPath();vc.moveTo(a.x,a.y);vc.lineTo(b.x,b.y);vc.stroke();
+    vc.strokeStyle='#5E3218';vc.lineWidth=4;vc.beginPath();vc.moveTo(a.x,a.y);vc.lineTo(b.x,b.y);vc.stroke();
+    vc.strokeStyle='rgba(110,65,30,0.3)';vc.lineWidth=1;vc.beginPath();vc.moveTo(a.x,a.y);vc.lineTo(b.x,b.y);vc.stroke();
+  });
+  // Queen chamber
+  const qn=nodes[2];
+  vc.fillStyle='#1E0A04';vc.beginPath();vc.ellipse(qn.x,qn.y,18,12,0,0,Math.PI*2);vc.fill();
+  vc.strokeStyle='#5E3018';vc.lineWidth=1.5;vc.beginPath();vc.ellipse(qn.x,qn.y,18,12,0,0,Math.PI*2);vc.stroke();
+  // Food spots
+  const t=Date.now()/700;
+  foodSpots.forEach(f=>{
+    if(!f.available)return;
+    vc.fillStyle='rgba(248,216,32,'+(0.18+0.1*Math.sin(t+f.x))+')';
+    vc.fillRect(Math.floor(f.x)-1,Math.floor(f.y)-1,5,5);
+    vc.fillStyle='#F8D820';vc.fillRect(Math.floor(f.x),Math.floor(f.y),3,2);
+    vc.fillStyle='#FFFFA0';vc.fillRect(Math.floor(f.x),Math.floor(f.y),1,1);
+  });
+  // Ants
+  ants.forEach(a=>a.draw());
+  // Queen
+  drawQueenVc(nodes[2].x,nodes[2].y);
+  // Blit 3x
+  dctx.clearRect(0,0,270,340);
+  dctx.drawImage(vcanvas,0,0,VW,VH,0,0,270,340);
 }
 
-// ─── Game objects ────────────────────────────────────────────
-let ants = [];
-let queen = new Queen();
-
-function spawnAnts(count) {
-  for (let i = 0; i < count; i++) {
-    ants.push(new Ant(ants.length));
-  }
-}
-spawnAnts(state.antCount);
-
-// ─── Milestones ──────────────────────────────────────────────
-function checkMilestones() {
-  // new ant every 15 food
-  let expectedAnts = 2 + Math.floor(state.totalFood / 15);
-  if (expectedAnts > state.antCount && state.antCount < 20) {
-    state.antCount++;
-    ants.push(new Ant(ants.length));
-    notify('New ant hatched!');
-  }
-  // new tunnel every 40 food
-  let expectedTunnels = 6 + Math.floor(state.totalFood / 40);
-  if (expectedTunnels > state.tunnelCount && state.tunnelCount < 18) {
-    state.tunnelCount++;
-    addTunnel();
-    notify('New tunnel dug!');
-  }
+function renderHUD(dt){
+  // Event timer bar
+  const frac=Math.min(1,state.eventTimer/120);
+  const r=frac>0.5?180:255,gv=Math.floor(frac>0.5?200:frac*2*200);
+  dctx.fillStyle='rgba('+r+','+gv+',40,0.75)';
+  dctx.fillRect(0,0,Math.floor(270*frac),3);
+  // HUD strip
+  dctx.fillStyle='rgba(8,4,2,0.55)';dctx.fillRect(0,3,270,17);
+  dctx.font='9px "Courier New",Courier,monospace';dctx.textBaseline='top';
+  dctx.fillStyle='rgba(240,200,140,0.92)';
+  const fStr=state.food<1000?Math.floor(state.food):(state.food/1000).toFixed(1)+'k';
+  dctx.textAlign='left';dctx.fillText('\uD83C\uDF4E'+fStr+'  +'+foodPerSec.toFixed(1)+'/s',4,5);
+  const pm=state.permMult||1;const ms=(state.mult*pm)>1.01?' x'+(state.mult*pm).toFixed(1):'';
+  dctx.textAlign='right';dctx.fillText('\uD83D\uDC1C'+ants.length+ms,266,5);
+  // Flash
+  if(flashAlpha>0){dctx.fillStyle=flashColor;dctx.globalAlpha=flashAlpha;dctx.fillRect(0,0,270,340);dctx.globalAlpha=1;flashAlpha=Math.max(0,flashAlpha-dt*3);}
+  // Notifs
+  dctx.textAlign='center';
+  notifs=notifs.filter(n=>n.life>0);
+  notifs.forEach(n=>{n.life-=dt;n.y-=dt*16;dctx.globalAlpha=Math.min(1,n.life*2);dctx.fillStyle=n.color;dctx.fillText(n.msg,135,n.y);dctx.globalAlpha=1;});
 }
 
-function addTunnel() {
-  // pick a random existing non-surface node and branch from it
-  let eligible = nodes.filter(n => n.y > SURFACE_Y + 30);
-  let base = eligible[Math.floor(Math.random() * eligible.length)];
-  let angle = (Math.random() * Math.PI * 0.7) + Math.PI * 0.15;
-  if (Math.random() < 0.5) angle = Math.PI - angle;
-  let len = 50 + Math.random() * 40;
-  let newNode = {
-    id: nodes.length,
-    x: Math.max(18, Math.min(W-18, base.x + Math.cos(angle)*len)),
-    y: Math.min(H-20, base.y + Math.abs(Math.sin(angle)*len)),
-  };
-  nodes.push(newNode);
-  edges.push({a: base.id, b: newNode.id});
-  // add a food spot further down
-  foodSpots.push({
-    x: 20 + Math.random() * (W - 40),
-    y: SURFACE_Y - 6 - Math.random() * 18,
-    available: true,
-    glow: 0,
+// === SHOP UI ===
+const shopEl=document.getElementById('shop');
+const shopFoodEl=document.getElementById('shop-food');
+const upgGridEl=document.getElementById('upg-grid');
+let shopOpen=false;
+
+upgGridEl.innerHTML=UPGRADES.map(u=>`<button class="upg-btn" id="btn-${u.id}" onclick="buyUpgrade('${u.id}')"><span class="upg-icon">${u.icon}</span><span class="upg-name">${u.name}</span><span class="upg-desc" id="desc-${u.id}">-</span><span class="upg-cost" id="cost-${u.id}"></span></button>`).join('');
+
+function toggleShop(){
+  shopOpen=!shopOpen;shopEl.classList.toggle('open',shopOpen);
+  document.getElementById('shop-btn').textContent=shopOpen?'\u2715 CLOSE':'\uD83E\uDEA9 SHOP';
+  if(shopOpen)updateShopUI();
+}
+function updateShopUI(){
+  shopFoodEl.textContent='\uD83C\uDF4E '+Math.floor(state.food)+' food';
+  UPGRADES.forEach(u=>{
+    const lv=state.upg[u.id],mx=u.levels.length;
+    const btn=document.getElementById('btn-'+u.id);
+    const descEl=document.getElementById('desc-'+u.id);
+    const costEl=document.getElementById('cost-'+u.id);
+    if(lv>=mx){btn.className='upg-btn maxed';descEl.textContent='MAXED!';costEl.textContent='';}
+    else{const lvl=u.levels[lv];btn.className='upg-btn'+(state.food>=lvl.cost?'':' locked');descEl.textContent='Lv'+(lv+1)+': '+lvl.desc;costEl.textContent=lvl.cost+' \uD83C\uDF4E';}
   });
 }
-
-// ─── Rendering ───────────────────────────────────────────────
-function drawSoil() {
-  // sky / transparent top strip
-  ctx.clearRect(0, 0, W, H);
-
-  // grass strip
-  ctx.fillStyle = COL.grass;
-  ctx.fillRect(0, SURFACE_Y - 6, W, 8);
-
-  // dirt layers
-  let grad = ctx.createLinearGradient(0, SURFACE_Y, 0, H);
-  grad.addColorStop(0,   COL.dirt1);
-  grad.addColorStop(0.4, COL.dirt2);
-  grad.addColorStop(1,   COL.dirt3);
-  ctx.fillStyle = grad;
-  ctx.fillRect(0, SURFACE_Y + 2, W, H - SURFACE_Y - 2);
-
-  // subtle texture noise (pre-drawn static dots)
-  ctx.fillStyle = 'rgba(255,220,150,0.03)';
-  for (let i = 0; i < 80; i++) {
-    // use sin for pseudo-random static positions
-    let px = (Math.sin(i * 127.1) * 0.5 + 0.5) * W;
-    let py = SURFACE_Y + (Math.sin(i * 311.7) * 0.5 + 0.5) * (H - SURFACE_Y);
-    ctx.fillRect(px, py, 1, 1);
-  }
+function buyUpgrade(id){
+  const u=upgById(id),lv=state.upg[id];
+  if(lv>=u.levels.length)return;
+  const cost=u.levels[lv].cost;if(state.food<cost)return;
+  state.food-=cost;state.upg[id]++;
+  if(id==='sniffer'){for(let i=0;i<3;i++)spawnFoodSpot();}
+  if(id==='antMax')growColony();
+  const btn=document.getElementById('btn-'+id);
+  btn.style.background='#184A18';setTimeout(()=>{btn.style.background='';updateShopUI();},400);
+  addNotif(u.icon+' '+u.name+' up!','#80FF80');updateShopUI();
 }
+document.getElementById('shop-btn').onclick=toggleShop;
+document.getElementById('shop-close').onclick=toggleShop;
 
-function drawTunnels() {
-  ctx.lineCap = 'round';
-  ctx.lineJoin = 'round';
-
-  edges.forEach(e => {
-    let a = nodes[e.a], b = nodes[e.b];
-    // outer glow
-    ctx.strokeStyle = 'rgba(140,90,40,0.18)';
-    ctx.lineWidth = 14;
-    ctx.beginPath();
-    ctx.moveTo(a.x, a.y);
-    ctx.lineTo(b.x, b.y);
-    ctx.stroke();
-    // main tunnel
-    ctx.strokeStyle = COL.tunnel;
-    ctx.lineWidth = 9;
-    ctx.beginPath();
-    ctx.moveTo(a.x, a.y);
-    ctx.lineTo(b.x, b.y);
-    ctx.stroke();
-  });
-}
-
-function drawChambers() {
-  // queen chamber
-  let qn = nodes[2];
-  ctx.save();
-  ctx.beginPath();
-  ctx.ellipse(qn.x, qn.y, 24, 16, 0, 0, Math.PI*2);
-  ctx.fillStyle = COL.chamber;
-  ctx.fill();
-  ctx.restore();
-}
-
-function drawFood() {
-  let now = Date.now() / 600;
-  foodSpots.forEach(f => {
-    if (!f.available) return;
-    // glow pulse
-    let glow = 0.15 + 0.12 * Math.sin(now + f.x);
-    ctx.beginPath();
-    ctx.arc(f.x, f.y, 6, 0, Math.PI*2);
-    ctx.fillStyle = `rgba(245,208,32,${glow})`;
-    ctx.fill();
-    // dot
-    ctx.beginPath();
-    ctx.arc(f.x, f.y, 2.5, 0, Math.PI*2);
-    ctx.fillStyle = COL.food;
-    ctx.fill();
-  });
-}
-
-function drawStats() {
-  ctx.font = '9px monospace';
-  ctx.textAlign = 'right';
-  ctx.fillStyle = COL.textDim;
-  ctx.fillText(`food: ${Math.floor(state.food)}`, W - 8, 14);
-  ctx.fillText(`ants: ${state.antCount}`, W - 8, 25);
-  ctx.fillText(`+${fps_display}/s`, W - 8, 36);
-}
-
-function drawNotifications(dt) {
-  notifications = notifications.filter(n => n.life > 0);
-  notifications.forEach(n => {
-    n.life -= dt;
-    n.y -= dt * 10;
-    let alpha = Math.min(1, n.life * 1.5);
-    ctx.save();
-    ctx.font = 'bold 9px monospace';
-    ctx.textAlign = 'center';
-    ctx.fillStyle = `rgba(245,208,32,${alpha})`;
-    ctx.fillText(n.msg, W / 2, n.y);
-    ctx.restore();
-  });
-}
-
-// ─── Game loop ───────────────────────────────────────────────
-let lastTime = null;
-
-function loop(ts) {
-  if (!lastTime) lastTime = ts;
-  let dt = Math.min((ts - lastTime) / 1000, 0.1);
-  lastTime = ts;
-
-  // fps tracker
-  fps_timer += dt;
-  if (fps_timer >= 1) {
-    fps_display = foodThisSecond;
-    foodThisSecond = 0;
-    fps_timer = 0;
-  }
-
-  // update
-  ants.forEach(a => a.update(dt));
-
-  // draw
-  drawSoil();
-  drawTunnels();
-  drawChambers();
-  drawFood();
-  ants.forEach(a => a.draw());
-  queen.draw();
-  drawStats();
-  drawNotifications(dt);
-
+// === GAME LOOP ===
+let lastTs=null,uiThrottle=0;
+function loop(ts){
+  if(!lastTs)lastTs=ts;
+  const dt=Math.min((ts-lastTs)/1000,0.1);lastTs=ts;
+  // Timers
+  if(state.multTimer>0){state.multTimer-=dt;if(state.multTimer<=0){state.multTimer=0;state.mult=1;}}
+  if(state.rainTimer>0)state.rainTimer-=dt;
+  // Queen drip
+  const drip=upgById('queenBoost').getVal();
+  if(drip>0){state.queenTimer+=dt;if(state.queenTimer>=drip){const g=state.mult*(state.permMult||1);state.food+=g;state.totalFood+=g;foodAcc+=g;state.queenTimer=0;}}
+  // Events
+  state.eventTimer-=dt;
+  if(state.eventTimer<=0&&!activeEvt)fireEvent();
+  if(evtDisplayTime>0){evtDisplayTime-=dt;evtFillEl.style.width=Math.max(0,evtDisplayTime/3.8*100)+'%';if(evtDisplayTime<=0)dismissEvt();}
+  // Toast
+  if(toastTimer>0){toastTimer-=dt;if(toastTimer<=0)toastEl.className='';}
+  // Temp food spots
+  foodSpots.forEach(f=>{if(f.temp&&f.available){f.tempTimer-=dt;if(f.tempTimer<=0)f.available=false;}});
+  foodSpots=foodSpots.filter(f=>!(f.temp&&!f.available));
+  // Ants
+  ants.forEach(a=>a.update(dt));
+  // Rate tracking
+  rateTimer+=dt;
+  if(rateTimer>=1){foodPerSec=foodAcc/rateTimer;foodAcc=0;rateTimer=0;}
+  // Render
+  renderWorld();renderHUD(dt);
+  // UI throttle
+  uiThrottle+=dt;if(uiThrottle>=0.3){if(shopOpen)updateShopUI();uiThrottle=0;}
   requestAnimationFrame(loop);
 }
-
 requestAnimationFrame(loop);
 </script>
 </body>
