@@ -1119,73 +1119,73 @@ function renderHUD_native(){
   const d=dctx;
   const s=gameDS,ox=gameOX,oy=gameOY;
   const gw=VW*s,gh=VH*s;
+  const hs=Math.max(1,s/2); // scale HUD elements proportionally in fullscreen
 
   // ── Top bar ─────────────────────────────────────────────────
-  d.fillStyle='rgba(0,0,0,0.72)';d.fillRect(ox,oy,gw,26);
+  d.fillStyle='rgba(0,0,0,0.72)';d.fillRect(ox,oy,gw,26*hs);
   // Hatch progress bar
   const hc=getHatchCost();
   const hatchTime=20/(1+(S.upg.queenBoost||0)*0.18)*(S.research.queenII?0.5:1);
   const bar=Math.min(1,(S.queenTimer||0)/hatchTime);
-  d.fillStyle='rgba(248,204,24,0.25)';d.fillRect(ox,oy,gw,3);
-  d.fillStyle='rgba(248,204,24,0.9)';d.fillRect(ox,oy,gw*bar,3);
+  d.fillStyle='rgba(248,204,24,0.25)';d.fillRect(ox,oy,gw,3*hs);
+  d.fillStyle='rgba(248,204,24,0.9)';d.fillRect(ox,oy,gw*bar,3*hs);
   // "next ant in Xs" under bar
   if(S.antCount<getAntMax()){
     const rem=Math.max(0,hatchTime-(S.queenTimer||0));
-    d.font='7px "Courier New",monospace';d.fillStyle='rgba(248,204,24,0.6)';
-    d.fillText(`next ant ${rem.toFixed(0)}s`,ox+4,oy+10);
+    d.font=`${7*hs}px "Courier New",monospace`;d.fillStyle='rgba(248,204,24,0.6)';
+    d.fillText(`next ant ${rem.toFixed(0)}s`,ox+4*hs,oy+10*hs);
   }
 
   // Colony title
   const title=COLONY_TITLES[Math.min(COLONY_TITLES.length-1,S.prestige)];
-  d.font='bold 13px "Courier New",monospace';
-  d.fillStyle='#F8CC18';d.fillText(title,ox+8,oy+18);
+  d.font=`bold ${13*hs}px "Courier New",monospace`;
+  d.fillStyle='#F8CC18';d.fillText(title,ox+8*hs,oy+19*hs);
 
   // Stats line — food + passive rate + RJ + ants
   const fs=S.food>=1e6?`${(S.food/1e6).toFixed(1)}M`:S.food>=1000?`${(S.food/1000).toFixed(1)}k`:Math.floor(S.food).toString();
   const passiveRate=(S.antTypes.farmer||0)*0.6+getChamberCount('fungus')*0.6;
   const rateStr=passiveRate>0?` +${passiveRate.toFixed(1)}/s`:'';
-  d.font='9px "Courier New",monospace';
+  d.font=`${9*hs}px "Courier New",monospace`;
   d.fillStyle='#C8A870';
-  d.fillText(`🍎${fs}${rateStr}  💜${S.royalJelly}  🐜${S.antCount}/${getAntMax()}`,ox+8,oy+27);
+  d.fillText(`🍎${fs}${rateStr}  💜${S.royalJelly}  🐜${S.antCount}/${getAntMax()}`,ox+8*hs,oy+27*hs);
   // Shard display (below stats, if any collected)
   if((S.clayShards||0)+(S.crystalShards||0)>0){
-    d.font='8px "Courier New",monospace';
-    d.fillStyle='#D08040';d.fillText(`🔶${S.clayShards||0}`,ox+8,oy+37);
-    d.fillStyle='#80C0FF';d.fillText(`🔷${S.crystalShards||0}`,ox+44,oy+37);
+    d.font=`${8*hs}px "Courier New",monospace`;
+    d.fillStyle='#D08040';d.fillText(`🔶${S.clayShards||0}`,ox+8*hs,oy+37*hs);
+    d.fillStyle='#80C0FF';d.fillText(`🔷${S.crystalShards||0}`,ox+44*hs,oy+37*hs);
   }
 
   // Fullscreen button (top right)
-  const btnX=ox+gw-26,btnY=oy+4,btnW=22,btnH=18;
+  const btnW=22*hs,btnH=18*hs;
+  const btnX=ox+gw-btnW-4*hs,btnY=oy+4*hs;
   d.fillStyle='rgba(60,80,120,0.85)';d.fillRect(btnX,btnY,btnW,btnH);
   d.strokeStyle='#6090CC';d.lineWidth=1;d.strokeRect(btnX+0.5,btnY+0.5,btnW-1,btnH-1);
-  d.fillStyle='#90B8FF';d.font='10px monospace';d.textAlign='center';
-  d.fillText(fullscreen?'⊠':'⊞',btnX+btnW/2,btnY+12);
+  d.fillStyle='#90B8FF';d.font=`${10*hs}px monospace`;d.textAlign='center';
+  d.fillText(fullscreen?'⊠':'⊞',btnX+btnW/2,btnY+12*hs);
   d.textAlign='left';
 
   // ── MIGRATE button ─────────────────────────────────────────
   if(S.totalFood>=5000){
-    const bw=96,bh=24,bx=ox+gw/2-bw/2,by=oy+SURFACE_Y*s-28;
-    // Shadow
+    const bw=96*hs,bh=24*hs,bx=ox+gw/2-bw/2,by=oy+SURFACE_Y*s-28*hs;
     d.fillStyle='rgba(0,0,0,0.5)';d.fillRect(bx+2,by+2,bw,bh);
-    // Button
     d.fillStyle='#F8CC18';d.fillRect(bx,by,bw,bh);
-    d.fillStyle='#FFE860';d.fillRect(bx,by,bw,3);
-    d.fillStyle='#C09010';d.fillRect(bx,by+bh-2,bw,2);
-    d.font='bold 12px "Courier New",monospace';
+    d.fillStyle='#FFE860';d.fillRect(bx,by,bw,3*hs);
+    d.fillStyle='#C09010';d.fillRect(bx,by+bh-2*hs,bw,2*hs);
+    d.font=`bold ${12*hs}px "Courier New",monospace`;
     d.fillStyle='#1A0800';d.textAlign='center';
-    d.fillText('✨ MIGRATE',bx+bw/2,by+16);
+    d.fillText('✨ MIGRATE',bx+bw/2,by+16*hs);
     d.textAlign='left';
   }
 
   // ── Status pills (bottom of game area) ─────────────────────
-  const pillY=oy+gh-18;let pillX=ox+4;
+  const pillY=oy+gh-18*hs;let pillX=ox+4*hs;
   function pill(text,bg){
     d.fillStyle=bg;
-    const tw=text.length*7+8;
-    d.fillRect(pillX,pillY,tw,14);
-    d.font='bold 9px "Courier New",monospace';d.fillStyle='#FFF';
-    d.fillText(text,pillX+4,pillY+10);
-    pillX+=tw+4;
+    const tw=text.length*7*hs+8*hs;
+    d.fillRect(pillX,pillY,tw,14*hs);
+    d.font=`bold ${9*hs}px "Courier New",monospace`;d.fillStyle='#FFF';
+    d.fillText(text,pillX+4*hs,pillY+10*hs);
+    pillX+=tw+4*hs;
   }
   if(S.mult>1)pill(`×${S.mult} BONUS`,'rgba(220,160,20,0.9)');
   if(S.rainTimer>0)pill(`🌧 RAIN ${Math.ceil(S.rainTimer)}s`,'rgba(60,100,220,0.85)');
@@ -1196,18 +1196,18 @@ function renderHUD_native(){
   const lnames=['SOIL','CLAY','CRYSTAL'];
   const lcols=['#8B5A2B','#C05A20','#5A30A0'];
   const li=S.layer>=2&&S.research.crystalEx?2:S.layer>=1&&S.research.deepMine?1:0;
-  const lx=ox+gw-36,ly=oy+30;
-  d.fillStyle='rgba(0,0,0,0.5)';d.fillRect(lx,ly,34,12);
-  d.fillStyle=lcols[li];d.font='bold 8px "Courier New",monospace';
-  d.fillText(lnames[li],lx+3,ly+9);
+  const lx=ox+gw-36*hs,ly=oy+30*hs;
+  d.fillStyle='rgba(0,0,0,0.5)';d.fillRect(lx,ly,34*hs,12*hs);
+  d.fillStyle=lcols[li];d.font=`bold ${8*hs}px "Courier New",monospace`;
+  d.fillText(lnames[li],lx+3*hs,ly+9*hs);
 
   // ── Priority mode pill ────────────────────────────────────
   const priCols={forage:'#40A020',defend:'#B03020',dig:'#806020',brood:'#8020C0',farm:'#20A080'};
   const priIcons={forage:'🍎',defend:'⚔️',dig:'⛏️',brood:'👑',farm:'🌿'};
   const pCol=priCols[S.priority]||'#606060';
-  d.fillStyle=pCol+'CC';d.fillRect(ox+4,oy+gh-28,36,12);
-  d.fillStyle='#FFF';d.font='bold 7px "Courier New",monospace';
-  d.fillText((priIcons[S.priority]||'?')+' '+(S.priority||'forage').toUpperCase().slice(0,4),ox+6,oy+gh-19);
+  d.fillStyle=pCol+'CC';d.fillRect(ox+4*hs,oy+gh-28*hs,36*hs,12*hs);
+  d.fillStyle='#FFF';d.font=`bold ${7*hs}px "Courier New",monospace`;
+  d.fillText((priIcons[S.priority]||'?')+' '+(S.priority||'forage').toUpperCase().slice(0,4),ox+6*hs,oy+gh-19*hs);
 
   // ── RJ active power buttons ───────────────────────────────
   const rjBtns=[
@@ -1216,27 +1216,27 @@ function renderHUD_native(){
     {label:'🍎FEAST',cost:1,col:'#208040',key:'feast'},
   ];
   rjBtns.forEach((b,i)=>{
-    const bx=ox+4+i*42,by=oy+gh-44;
+    const bx=ox+4*hs+i*42*hs,by=oy+gh-44*hs;
     const canAf=S.royalJelly>=b.cost;
-    d.fillStyle=canAf?b.col+'BB':'rgba(40,20,10,0.7)';d.fillRect(bx,by,38,13);
-    d.fillStyle=canAf?'#FFF':'#604030';d.font='bold 6px "Courier New",monospace';
-    d.fillText(b.label,bx+2,by+9);
-    d.font='6px "Courier New",monospace';d.fillStyle=canAf?'#FFE060':'#503020';
-    d.fillText(b.cost+'RJ',bx+24,by+9);
+    d.fillStyle=canAf?b.col+'BB':'rgba(40,20,10,0.7)';d.fillRect(bx,by,38*hs,13*hs);
+    d.fillStyle=canAf?'#FFF':'#604030';d.font=`bold ${6*hs}px "Courier New",monospace`;
+    d.fillText(b.label,bx+2*hs,by+9*hs);
+    d.font=`${6*hs}px "Courier New",monospace`;d.fillStyle=canAf?'#FFE060':'#503020';
+    d.fillText(b.cost+'RJ',bx+24*hs,by+9*hs);
   });
   // Frenzy active indicator
   if((S.rjFrenzyTimer||0)>0){
     d.fillStyle='rgba(255,200,0,0.2)';d.fillRect(ox,oy,gw,gh);
-    d.fillStyle='#FFE040';d.font='bold 7px "Courier New",monospace';d.textAlign='center';
-    d.fillText(`⚡ FRENZY ${Math.ceil(S.rjFrenzyTimer)}s`,ox+gw/2,oy+gh-48);
+    d.fillStyle='#FFE040';d.font=`bold ${7*hs}px "Courier New",monospace`;d.textAlign='center';
+    d.fillText(`⚡ FRENZY ${Math.ceil(S.rjFrenzyTimer)}s`,ox+gw/2,oy+gh-48*hs);
     d.textAlign='left';
   }
 
   // ── DEV Reset button (bottom-right) ────────────────────────
-  d.fillStyle='rgba(80,20,20,0.85)';d.fillRect(ox+gw-36,oy+gh-14,34,12);
-  d.strokeStyle='rgba(200,60,60,0.7)';d.lineWidth=1;d.strokeRect(ox+gw-35.5,oy+gh-13.5,33,11);
-  d.fillStyle='#FF8080';d.font='bold 7px "Courier New",monospace';d.textAlign='left';
-  d.fillText('↺ RESET',ox+gw-33,oy+gh-5);
+  d.fillStyle='rgba(80,20,20,0.85)';d.fillRect(ox+gw-36*hs,oy+gh-14*hs,34*hs,12*hs);
+  d.strokeStyle='rgba(200,60,60,0.7)';d.lineWidth=1;d.strokeRect(ox+gw-35.5*hs,oy+gh-13.5*hs,33*hs,11*hs);
+  d.fillStyle='#FF8080';d.font=`bold ${7*hs}px "Courier New",monospace`;d.textAlign='left';
+  d.fillText('↺ RESET',ox+gw-33*hs,oy+gh-5*hs);
 }
 
 function hardReset(){localStorage.removeItem(SAVE_KEY);location.reload();}
@@ -1446,11 +1446,14 @@ document.getElementById('shop-close').addEventListener('click',()=>{
   document.getElementById('shop').classList.remove('open');
 });
 canvas.addEventListener('click',e=>{
+  const s=gameDS,hs=Math.max(1,s/2);
+  const gw=VW*s,gh=VH*s;
   // Convert screen coords to virtual canvas coords
-  const sx=(e.clientX-gameOX)/gameDS,sy=(e.clientY-gameOY)/gameDS;
+  const sx=(e.clientX-gameOX)/s,sy=(e.clientY-gameOY)/s;
   // Fullscreen btn (top-right of HUD bar, in native coords)
-  const btnX_n=gameOX+VW*gameDS-26,btnY_n=gameOY+4;
-  if(e.clientX>=btnX_n&&e.clientX<=btnX_n+22&&e.clientY>=btnY_n&&e.clientY<=btnY_n+18){
+  const btnW=22*hs,btnH=18*hs;
+  const btnX_n=gameOX+gw-btnW-4*hs,btnY_n=gameOY+4*hs;
+  if(e.clientX>=btnX_n&&e.clientX<=btnX_n+btnW&&e.clientY>=btnY_n&&e.clientY<=btnY_n+btnH){
     fullscreen=!fullscreen;
     if(fullscreen){window.moveTo(0,0);window.resizeTo(screen.availWidth,screen.availHeight);}
     else{window.resizeTo(270,340);window.moveTo(screen.availWidth-280,screen.availHeight-350);}
@@ -1458,17 +1461,17 @@ canvas.addEventListener('click',e=>{
   }
   // Migrate btn (native coords)
   if(S.totalFood>=5000){
-    const bw=96,bh=24;
-    const bx_n=gameOX+VW*gameDS/2-bw/2,by_n=gameOY+SURFACE_Y*gameDS-28;
+    const bw=96*hs,bh=24*hs;
+    const bx_n=gameOX+gw/2-bw/2,by_n=gameOY+SURFACE_Y*s-28*hs;
     if(e.clientX>=bx_n&&e.clientX<=bx_n+bw&&e.clientY>=by_n&&e.clientY<=by_n+bh)
       document.getElementById('prestige-overlay').classList.add('show');
   }
   // Dev reset btn (bottom-right, native coords)
-  const rx_n=gameOX+VW*gameDS-36,ry_n=gameOY+VH*gameDS-14;
-  if(e.clientX>=rx_n&&e.clientX<=rx_n+34&&e.clientY>=ry_n&&e.clientY<=ry_n+12)hardReset();
+  const rx_n=gameOX+gw-36*hs,ry_n=gameOY+gh-14*hs;
+  if(e.clientX>=rx_n&&e.clientX<=rx_n+34*hs&&e.clientY>=ry_n&&e.clientY<=ry_n+12*hs)hardReset();
   // Priority pill (bottom-left, native)
-  const pp_n_x=gameOX+4,pp_n_y=gameOY+VH*gameDS-28;
-  if(e.clientX>=pp_n_x&&e.clientX<=pp_n_x+36&&e.clientY>=pp_n_y&&e.clientY<=pp_n_y+12){
+  const pp_n_x=gameOX+4*hs,pp_n_y=gameOY+gh-28*hs;
+  if(e.clientX>=pp_n_x&&e.clientX<=pp_n_x+36*hs&&e.clientY>=pp_n_y&&e.clientY<=pp_n_y+12*hs){
     const modes=['forage','defend','dig','brood','farm'];
     const cur=modes.indexOf(S.priority||'forage');
     S.priority=modes[(cur+1)%modes.length];
@@ -1477,8 +1480,8 @@ canvas.addEventListener('click',e=>{
   // RJ power buttons (native)
   const rjBtnDefs=[{cost:3,key:'frenzy'},{cost:2,key:'rjheal'},{cost:1,key:'feast'}];
   rjBtnDefs.forEach((b,i)=>{
-    const bx=gameOX+4+i*42,by=gameOY+VH*gameDS-44;
-    if(e.clientX>=bx&&e.clientX<=bx+38&&e.clientY>=by&&e.clientY<=by+13){
+    const bx=gameOX+4*hs+i*42*hs,by=gameOY+gh-44*hs;
+    if(e.clientX>=bx&&e.clientX<=bx+38*hs&&e.clientY>=by&&e.clientY<=by+13*hs){
       if(S.royalJelly<b.cost){showToast('Not enough RJ!');return;}
       S.royalJelly-=b.cost;
       if(b.key==='frenzy'){S.rjFrenzyTimer=30;showToast('⚡ FRENZY! 2× speed 30s!');}
@@ -1584,8 +1587,8 @@ function gameLoop(ts){
   // Render
   renderWorld(ts);
 
-  // Blit — capped at 2.5× so pixel art stays crisp, centered in window
-  const ds=Math.min(SCALE,2.5);
+  // Blit — in fullscreen use full SCALE, else cap at 2.5× for widget mode
+  const ds=fullscreen?SCALE:Math.min(SCALE,2.5);
   gameDS=ds;
   gameOX=Math.floor((canvas.width -VW*ds)/2);
   gameOY=Math.floor((canvas.height-VH*ds)/2);
