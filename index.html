@@ -62,6 +62,16 @@ canvas{display:block;position:absolute;top:0;left:0;image-rendering:pixelated;im
 .cancel-btn{border-color:#6A3A18;color:#A08060}
 #toast{position:fixed;top:26px;left:50%;transform:translateX(-50%);background:rgba(248,216,32,0.95);color:#2A1506;font:bold 8px 'Courier New',monospace;padding:3px 10px;white-space:nowrap;opacity:0;transition:opacity 0.3s;pointer-events:none;z-index:90;letter-spacing:1px}
 #toast.show{opacity:1}
+#doctrine-overlay{position:fixed;top:0;left:0;width:100%;height:100%;display:none;align-items:center;justify-content:center;z-index:82;background:rgba(0,0,0,0.85)}
+#doctrine-overlay.show{display:flex}
+#doctrine-box{background:#080402;border:2px solid #F8CC18;padding:14px 16px;max-width:260px;width:92%}
+#doctrine-box h3{color:#F8CC18;font:bold 10px 'Courier New',monospace;letter-spacing:2px;margin-bottom:6px}
+#doctrine-box p{color:#907050;font:7px 'Courier New',monospace;line-height:1.5;margin-bottom:8px}
+.doc-btn{background:#120804;border:1px solid #5A3018;color:#C8A070;font:7px/1.4 'Courier New',monospace;padding:6px 8px;margin:3px 0;cursor:pointer;width:100%;text-align:left;display:block}
+.doc-btn:hover{background:#1E0E06;border-color:#F8CC18;color:#F8E090}
+.doc-btn b{color:#F8CC18;display:block;margin-bottom:2px}
+#warn-overlay{position:fixed;bottom:40px;left:50%;transform:translateX(-50%);background:rgba(180,30,0,0.92);border:1px solid #FF6040;color:#FFD0C0;font:bold 8px 'Courier New',monospace;padding:4px 12px;pointer-events:none;z-index:88;opacity:0;transition:opacity 0.3s;white-space:nowrap}
+#warn-overlay.show{opacity:1}
 </style>
 </head>
 <body>
@@ -78,8 +88,9 @@ canvas{display:block;position:absolute;top:0;left:0;image-rendering:pixelated;im
   </div>
   <div id="shop-tabs">
     <button class="tab-btn active" onclick="setTab('upgrades')">UPGRADES</button>
-    <button class="tab-btn" onclick="setTab('ants')">ANT TYPES</button>
+    <button class="tab-btn" onclick="setTab('ants')">ANTS</button>
     <button class="tab-btn" onclick="setTab('research')">RESEARCH</button>
+    <button class="tab-btn" onclick="setTab('chambers')">CHAMBERS</button>
   </div>
   <div id="tab-content"></div>
 </div>
@@ -88,6 +99,14 @@ canvas{display:block;position:absolute;top:0;left:0;image-rendering:pixelated;im
     <span id="evt-icon"></span><span id="evt-name"></span>
     <span id="evt-desc"></span>
     <div id="evt-bar"><div id="evt-fill"></div></div>
+  </div>
+</div>
+<div id="warn-overlay"></div>
+<div id="doctrine-overlay">
+  <div id="doctrine-box">
+    <h3>🧬 CHOOSE DOCTRINE</h3>
+    <p>Permanent behavioral shift for this colony lineage.<br>Stacks with previous choices.</p>
+    <div id="doctrine-choices"></div>
   </div>
 </div>
 <div id="prestige-overlay">
@@ -138,6 +157,44 @@ const RESEARCH=[
   {id:'queenII',   icon:'👸',name:'TWIN QUEENS',  desc:'2nd queen doubles hatch',   cost:5,prestige:1},
 ];
 
+// ── Doctrines (chosen at prestige, stack across runs) ────────
+const DOCTRINES=[
+  {id:'forager',icon:'🍎',name:'FORAGER PATH',
+   desc:'Food spawn rate +40%. Workers forage 20% faster. Each run starts with +4 extra food spots.',
+   apply:(s)=>{s._docForager=true;}},
+  {id:'war',    icon:'⚔️',name:'WAR PATH',
+   desc:'Soldiers start at 3 HP. Enemies drop food on death. Ant-killing events halved in severity.',
+   apply:(s)=>{s._docWar=true;}},
+  {id:'deep',   icon:'💎',name:'DEEP COLONY',
+   desc:'Crystal layer active from run start. Clay shard drops 2×. Deep food value +50%.',
+   apply:(s)=>{s._docDeep=true;}},
+  {id:'brood',  icon:'👑',name:'BROOD PATH',
+   desc:'Ant cap +8. Queen hatches 30% faster always. Nurses heal wounded ants passively.',
+   apply:(s)=>{s._docBrood=true;}},
+];
+
+// ── Chambers (node specialization) ───────────────────────────
+const CHAMBERS={
+  nursery:{name:'NURSERY', icon:'🥚',col:'rgba(180,80,255,0.55)', desc:'-25% hatch time per chamber', cost:200},
+  storage:{name:'STORAGE', icon:'📦',col:'rgba(200,140,40,0.55)',  desc:'Food never decays here (+15 cap)', cost:300},
+  guard:  {name:'GUARD',   icon:'⚔️',col:'rgba(220,40,40,0.55)',   desc:'Soldiers here: +1 max HP',  cost:350},
+  fungus: {name:'FUNGUS',  icon:'🍄',col:'rgba(40,200,60,0.55)',   desc:'+0.6 food/s passive per farm',cost:400},
+  vent:   {name:'VENT',    icon:'💨',col:'rgba(80,140,255,0.55)',   desc:'+35% deep-node food bonus',  cost:500},
+};
+function getChambers(){return S.chambers||{};}
+function getChamberCount(type){return Object.values(getChambers()).filter(v=>v===type).length;}
+function buildChamber(ni,type){
+  const ch=CHAMBERS[type];if(!ch)return;
+  if(S.food<ch.cost){showToast('Not enough food!');return;}
+  const n=nodes[parseInt(ni)];
+  if(!n||parseInt(ni)===QUEEN_NODE||n.y<=SURFACE_Y+6){showToast("Can't build here!");return;}
+  S.food-=ch.cost;if(!S.chambers)S.chambers={};
+  S.chambers[String(ni)]=type;
+  showToast(`${ch.icon} ${ch.name} built!`);updateShopUI();
+}
+window.buildChamber=buildChamber;
+window.destroyChamber=function(ni){if(S.chambers)delete S.chambers[String(ni)];updateShopUI();};
+
 // ── Ant types ─────────────────────────────────────────────────
 const ANT_TYPES=[
   {id:'scout',  icon:'🟡',name:'SCOUT',  desc:'30% faster, finds food directly', cost:120,color:[220,200,0],  max:8},
@@ -148,7 +205,7 @@ const ANT_TYPES=[
 ];
 
 // ── Save / State ──────────────────────────────────────────────
-const SAVE_KEY='antColony_v5';
+const SAVE_KEY='antColony_v6';
 const COLONY_TITLES=['Nest','Burrow','Colony','Hive','Empire','Supercolony','LEGEND'];
 
 function defState(){return{
@@ -159,6 +216,14 @@ function defState(){return{
   royalJelly:0,prestige:0,layer:0,
   mult:1,multTimer:0,queenTimer:0,eventTimer:Math.random()*30+30,
   permMult:1,rainTimer:0,builderTimer:0,
+  // New v6 fields
+  priority:'forage',      // colony mode: forage/defend/dig/brood/farm
+  doctrines:[],           // chosen prestige doctrines (ids)
+  clayShards:0,           // clay zone resource
+  crystalShards:0,        // crystal zone resource
+  chambers:{},            // nodeIdx(str) → chamber type
+  rjFrenzyTimer:0,        // active RJ frenzy duration
+  crystalRJAccum:0,       // passive RJ from crystal nodes
 };}
 
 let S=defState();
@@ -211,7 +276,16 @@ const EVENTS=[
    fn:()=>{S.food=Math.floor(S.food*Math.max(0.1,0.7-(S.upg.armor||0)*0.1));S.antCount=Math.max(1,S.antCount-1);syncAnts();showToast('PESTICIDE! ☠️');}},
   {id:'pollinator',icon:'🐝',name:'BEE ALLIANCE',   desc:'×2 food for 30s + 50 food!',  type:'good',
    fn:()=>{S.mult=2;S.multTimer=30;addFood(50);}},
-  {id:'earthquake',icon:'🌍',name:'EARTHSHAKE',     desc:'Tunnel collapse, -2 ants',    type:'bad',
+  {id:'antraid',   icon:'🪖',name:'ANT RAID',        desc:'5-enemy wave attacks the nest!',type:'bad',
+   fn:()=>{
+     const armorRed=S.doctrines&&S.doctrines.includes('war')?2:0;
+     const count=Math.max(2,5-(S.antTypes.soldier||0)-armorRed);
+     for(let i=0;i<count;i++)setTimeout(()=>enemies.push(new Enemy(Math.random()<0.4?'beetle':'antEnemy')),i*400);
+     showToast(`🪖 ANT RAID! ${count} enemies incoming!`);
+   }},
+  {id:'thief',     icon:'🐀',name:'FOOD THIEF',      desc:'A food thief is stealing supplies!',type:'bad',
+   fn:()=>{enemies.push(new Enemy('thief'));showToast('🐀 FOOD THIEF spotted!');}},
+  {id:'earthquake',icon:'🌍',name:'EARTHSHAKE',     desc:'Tunnel collapse, -1 ant',    type:'bad',
    fn:()=>{
      S.antCount=Math.max(1,S.antCount-1);syncAnts();
      // Only remove a leaf edge (degree-1 endpoint) — can't disconnect main graph
@@ -305,25 +379,32 @@ const MAX_FOOD_SPOTS=18;
 let foodSpots=[];
 let poisonTimer=0;
 function spawnFood(){
-  if(foodSpots.length>=(droughtTimer>0?5:MAX_FOOD_SPOTS))return;
+  const cap=droughtTimer>0?5:MAX_FOOD_SPOTS+(S.doctrines&&S.doctrines.includes('forager')?4:0);
+  if(foodSpots.length>=cap)return;
   const type=pickFoodType();
-  // y: sits right on the grass surface (SURFACE_Y-3 to SURFACE_Y+1)
-  foodSpots.push({x:Math.random()*(VW-20)+10, y:SURFACE_Y-2+Math.floor(Math.random()*3), type});
+  foodSpots.push({x:Math.random()*(VW-20)+10, y:SURFACE_Y-2+Math.floor(Math.random()*3), type, age:0});
 }
 for(let i=0;i<6;i++)spawnFood();
 
 // ── Helpers ───────────────────────────────────────────────────
-function getAntMax(){return 10+(S.upg.antMax||0)*5;}
+function getAntMax(){
+  let m=10+(S.upg.antMax||0)*5;
+  if(S.doctrines&&S.doctrines.includes('brood'))m+=8;
+  return m;
+}
 function getSpeed(){
   let sp=0.52+(S.upg.speed||0)*0.18;
   if(S.rainTimer>0)sp*=0.5;
   if(poisonTimer>0)sp*=0.35;
+  if((S.rjFrenzyTimer||0)>0)sp*=2;
   return sp*(1+(S.antTypes.scout||0)*0.06);
 }
+function getNurseryBonus(){return Math.min(0.6,getChamberCount('nursery')*0.08);}
 function getCarry(){return 1+(S.upg.carry||0);}
 function getHatchCost(){
   let base=S.research.incubation?12:18;
-  return Math.max(3,Math.floor(base*(1-Math.min(0.7,(S.antTypes.nurse||0)*0.08))));
+  const broodBonus=S.doctrines&&S.doctrines.includes('brood')?0.3:0;
+  return Math.max(3,Math.floor(base*(1-Math.min(0.7,(S.antTypes.nurse||0)*0.08)-getNurseryBonus()-broodBonus)));
 }
 function getVentBonus(nodeY){
   const v=S.upg.ventilation||0;if(!v)return 1;
@@ -353,7 +434,8 @@ class Ant{
     this.targetFood=null;this.carry=0;this.wanderT=Math.random()*3;
     this.facing=1;this.legAnim=Math.random()*Math.PI*2;
     this.stuckTimer=0;this.fighting=null;this.frozenTimer=0;
-    this.hp=type==='soldier'?2:1; // soldiers take 2 hits
+    const warDoc=S.doctrines&&S.doctrines.includes('war');
+    this.hp=type==='soldier'?(warDoc?3:2):1;
     this.noDeliveryTimer=0;       // reset on food delivery; if >40s, teleport to queen
     this.foodSearchTimer=0;       // reset when leaving TO_FOOD; if >12s, give up
   }
@@ -398,13 +480,21 @@ class Ant{
       this.state='WANDER';this.targetNode=null;this.targetFood=null;this.carry=0;this.stuckTimer=0;
       return;
     }
-    const spd=(getSpeed()*(this.type==='scout'?1.3:1))*50;
+    // Priority-aware speed modifier
+    const priSpd=S.priority==='forage'?1.12:S.priority==='defend'&&this.type==='soldier'?0.85:1;
+    const spd=(getSpeed()*(this.type==='scout'?1.3:1)*priSpd)*50;
     const qn=nodes[QUEEN_NODE];
 
     if(this.state==='WANDER'){
       this.wanderT-=dt;
       if(this.wanderT<=0){
-        if(foodSpots.length&&Math.random()<0.78){
+        // DEFEND mode: soldiers patrol near surface; others forage cautiously
+        if(S.priority==='defend'&&this.type==='soldier'){
+          this.targetNode=this.pickNext('up');this.wanderT=Math.random()*1.5+0.5;
+        }else{
+        // Forage probability varies by priority
+        const fp=S.priority==='forage'?0.90:S.priority==='farm'?0.65:0.78;
+        if(foodSpots.length&&Math.random()<fp){
           this.state='TO_FOOD';
           if(S.research.pheromone||this.type==='scout'){
             const cn=nodes[this.nodeIdx];
@@ -414,6 +504,7 @@ class Ant{
           this.targetNode=this.pickNext(Math.random()<0.5?'up':'down');
           this.wanderT=Math.random()*2+0.5;
         }
+        } // end else (not defend-soldier)
       }
       if(this.targetNode!==null){
         const tn=nodes[this.targetNode];
@@ -460,7 +551,16 @@ class Ant{
     else if(this.state==='TO_QUEEN'){
       if(this.nodeIdx===QUEEN_NODE){
         const dx=qn.x-this.x,dy=qn.y-this.y,d=Math.sqrt(dx*dx+dy*dy);
-        if(d<3){addFood(this.carry);this.carry=0;this.state='WANDER';this.wanderT=Math.random()*2+1;this.stuckTimer=0;this.noDeliveryTimer=0;}
+        if(d<3){
+          addFood(this.carry);this.carry=0;this.state='WANDER';this.wanderT=Math.random()*2+1;this.stuckTimer=0;this.noDeliveryTimer=0;
+          // Shard drops based on delivery depth
+          const dn=nodes[this.nodeIdx];
+          const isClay=dn&&dn.y>SURFACE_Y+48;const isCrystal=dn&&dn.y>SURFACE_Y+95;
+          const clayRate=S.doctrines&&S.doctrines.includes('deep')?0.20:0.10;
+          if(isCrystal&&Math.random()<0.05){S.crystalShards=(S.crystalShards||0)+1;showToast('🔷 Crystal Shard!');}
+          else if(isClay&&Math.random()<clayRate){S.clayShards=(S.clayShards||0)+1;showToast('🔶 Clay Shard!');}
+          // WAR doctrine: enemies drop food (handled in Enemy.update on death)
+        }
         else{this._move(qn.x,qn.y,spd,dt);}
       }else{
         if(this.targetNode===null){const nx=this.pickNext('down');if(nx===null)return;this.targetNode=nx;}
@@ -498,14 +598,15 @@ syncAnts();
 // ── Enemy system ──────────────────────────────────────────────
 class Enemy{
   constructor(type){
-    this.type=type; // 'beetle','antEnemy','wasp'
+    this.type=type; // 'beetle','antEnemy','wasp','thief'
     this.x=Math.random()<0.5?-8:VW+8;
     this.y=type==='wasp'?SURFACE_Y-8:SURFACE_Y-3;
     this.hp=type==='beetle'?2:1;
-    this.speed=(type==='beetle'?14:type==='wasp'?32:22)*(Math.random()*0.4+0.8);
+    this.speed=(type==='beetle'?14:type==='wasp'?32:type==='thief'?38:22)*(Math.random()*0.4+0.8);
     this.facing=this.x<0?1:-1;
     this.dead=false;this.fightTimer=0;this.target=null;
     this.legAnim=Math.random()*Math.PI*2;
+    this.stolenFood=null; // thief carries stolen food
   }
   update(dt){
     if(this.dead)return;
@@ -527,9 +628,35 @@ class Enemy{
           if(idx>=0){ants.splice(idx,1);S.antCount=Math.max(1,S.antCount-1);}
           ant.fighting=null;
           this.target=null;this.hp--;
-          if(this.hp<=0){this.dead=true;showToast(this.type==='beetle'?'Beetle killed! 💥':'Enemy ant dead!');}
+          if(this.hp<=0){
+            this.dead=true;
+            if(S.doctrines&&S.doctrines.includes('war'))addFood(this.type==='beetle'?12:5);
+            showToast(this.type==='beetle'?'Beetle killed! 💥':'Enemy ant dead!');
+          }
         }
       }
+      return;
+    }
+    // Food thief: runs to food spots, grabs one, runs away
+    if(this.type==='thief'){
+      if(this.stolenFood){
+        // Carrying stolen food — escape off screen
+        this.x+=this.speed*this.facing*dt;
+        if(this.x>VW+15||this.x<-15){this.dead=true;showToast('🐀 Thief escaped with food!');}
+        return;
+      }
+      // Find nearest food spot
+      let tgt=null,tgtD=999;
+      foodSpots.forEach(f=>{const d=Math.hypot(f.x-this.x,f.y-this.y);if(d<tgtD){tgtD=d;tgt=f;}});
+      if(tgt){
+        const dx=tgt.x-this.x,dy=tgt.y-this.y,d=Math.sqrt(dx*dx+dy*dy);
+        this.facing=dx>0?1:-1;
+        if(d<3){
+          // Steal it
+          const idx=foodSpots.indexOf(tgt);if(idx>=0)foodSpots.splice(idx,1);
+          this.stolenFood=tgt;this.facing=this.x<VW/2?-1:1;
+        }else{this.x+=dx/d*this.speed*dt;this.y+=dy/d*this.speed*dt;}
+      }else{this.dead=true;}
       return;
     }
     // Walk toward center of screen (tunnel entrance area)
@@ -798,6 +925,17 @@ function renderWorld(ts){
       c.fillStyle='rgba(60,200,80,0.5)';
       c.fillRect(n.x+3,n.y-1,2,2);c.fillRect(n.x-4,n.y+1,2,1);
     }
+    // Chamber overlay — glowing room behind node
+    const chType=getChambers()[String(i)];
+    if(chType&&CHAMBERS[chType]){
+      const ch=CHAMBERS[chType];
+      c.fillStyle=ch.col;c.fillRect(n.x-6,n.y-6,12,12);
+      // Pulsing border
+      const pulse=Math.sin(ts/600+i)*0.3+0.7;
+      c.fillStyle=ch.col.replace(/[\d.]+\)$/,`${(pulse*0.8).toFixed(2)})`);
+      c.fillRect(n.x-7,n.y-7,14,1);c.fillRect(n.x-7,n.y+6,14,1);
+      c.fillRect(n.x-7,n.y-6,1,12);c.fillRect(n.x+6,n.y-6,1,12);
+    }
   });
 
   // ── Queen chamber ────────────────────────────────────────────
@@ -865,10 +1003,12 @@ function renderWorld(ts){
   }
 
   // ── Food spots ───────────────────────────────────────────────
-  const sm=1+(S.upg.sniffer||0)*0.12;
+  const sm=(1+(S.upg.sniffer||0)*0.12)*(S.doctrines&&S.doctrines.includes('forager')?1.4:1);
   if(Math.random()<0.018*sm)spawnFood();
   foodSpots.forEach(f=>{
+    const stale=(f.age||0)>25;
     const ft=f.type||FOOD_TYPES[0];
+    if(stale){c.globalAlpha=0.55;} // stale food is visually dimmed
     c.fillStyle=ft.col;
     if(ft.id==='leaf'){
       c.fillRect(f.x-2,f.y-2,5,3);c.fillRect(f.x-1,f.y-3,3,1);
@@ -923,6 +1063,9 @@ function renderWorld(ts){
       c.fillStyle=ft.hl;c.fillRect(f.x,f.y-4,1,1);c.fillRect(f.x-1,f.y-2,1,1);
       c.fillStyle='rgba(200,240,255,0.5)';c.fillRect(f.x+1,f.y-3,1,3);
     }
+    if(stale)c.globalAlpha=1; // restore alpha after stale food
+    // Stale indicator: small hourglass dot
+    if(stale){c.fillStyle='rgba(255,160,0,0.8)';c.fillRect(f.x+3,f.y-5,2,2);}
   });
 
   // ── Enemies ──────────────────────────────────────────────────
@@ -999,11 +1142,17 @@ function renderHUD_native(){
 
   // Stats line — food + passive rate + RJ + ants
   const fs=S.food>=1e6?`${(S.food/1e6).toFixed(1)}M`:S.food>=1000?`${(S.food/1000).toFixed(1)}k`:Math.floor(S.food).toString();
-  const passiveRate=(S.antTypes.farmer||0)*0.6;
+  const passiveRate=(S.antTypes.farmer||0)*0.6+getChamberCount('fungus')*0.6;
   const rateStr=passiveRate>0?` +${passiveRate.toFixed(1)}/s`:'';
   d.font='9px "Courier New",monospace';
   d.fillStyle='#C8A870';
   d.fillText(`🍎${fs}${rateStr}  💜${S.royalJelly}  🐜${S.antCount}/${getAntMax()}`,ox+8,oy+27);
+  // Shard display (below stats, if any collected)
+  if((S.clayShards||0)+(S.crystalShards||0)>0){
+    d.font='8px "Courier New",monospace';
+    d.fillStyle='#D08040';d.fillText(`🔶${S.clayShards||0}`,ox+8,oy+37);
+    d.fillStyle='#80C0FF';d.fillText(`🔷${S.crystalShards||0}`,ox+44,oy+37);
+  }
 
   // Fullscreen button (top right)
   const btnX=ox+gw-26,btnY=oy+4,btnW=22,btnH=18;
@@ -1052,6 +1201,37 @@ function renderHUD_native(){
   d.fillStyle=lcols[li];d.font='bold 8px "Courier New",monospace';
   d.fillText(lnames[li],lx+3,ly+9);
 
+  // ── Priority mode pill ────────────────────────────────────
+  const priCols={forage:'#40A020',defend:'#B03020',dig:'#806020',brood:'#8020C0',farm:'#20A080'};
+  const priIcons={forage:'🍎',defend:'⚔️',dig:'⛏️',brood:'👑',farm:'🌿'};
+  const pCol=priCols[S.priority]||'#606060';
+  d.fillStyle=pCol+'CC';d.fillRect(ox+4,oy+gh-28,36,12);
+  d.fillStyle='#FFF';d.font='bold 7px "Courier New",monospace';
+  d.fillText((priIcons[S.priority]||'?')+' '+(S.priority||'forage').toUpperCase().slice(0,4),ox+6,oy+gh-19);
+
+  // ── RJ active power buttons ───────────────────────────────
+  const rjBtns=[
+    {label:'⚡FRNZ',cost:3,col:'#C0A000',key:'frenzy'},
+    {label:'💊HEAL',cost:2,col:'#8040C0',key:'rjheal'},
+    {label:'🍎FEAST',cost:1,col:'#208040',key:'feast'},
+  ];
+  rjBtns.forEach((b,i)=>{
+    const bx=ox+4+i*42,by=oy+gh-44;
+    const canAf=S.royalJelly>=b.cost;
+    d.fillStyle=canAf?b.col+'BB':'rgba(40,20,10,0.7)';d.fillRect(bx,by,38,13);
+    d.fillStyle=canAf?'#FFF':'#604030';d.font='bold 6px "Courier New",monospace';
+    d.fillText(b.label,bx+2,by+9);
+    d.font='6px "Courier New",monospace';d.fillStyle=canAf?'#FFE060':'#503020';
+    d.fillText(b.cost+'RJ',bx+24,by+9);
+  });
+  // Frenzy active indicator
+  if((S.rjFrenzyTimer||0)>0){
+    d.fillStyle='rgba(255,200,0,0.2)';d.fillRect(ox,oy,gw,gh);
+    d.fillStyle='#FFE040';d.font='bold 7px "Courier New",monospace';d.textAlign='center';
+    d.fillText(`⚡ FRENZY ${Math.ceil(S.rjFrenzyTimer)}s`,ox+gw/2,oy+gh-48);
+    d.textAlign='left';
+  }
+
   // ── DEV Reset button (bottom-right) ────────────────────────
   d.fillStyle='rgba(80,20,20,0.85)';d.fillRect(ox+gw-36,oy+gh-14,34,12);
   d.strokeStyle='rgba(200,60,60,0.7)';d.lineWidth=1;d.strokeRect(ox+gw-35.5,oy+gh-13.5,33,11);
@@ -1066,7 +1246,7 @@ let currentTab='upgrades';
 window.setTab=function(tab){
   currentTab=tab;
   document.querySelectorAll('.tab-btn').forEach((b,i)=>{
-    b.classList.toggle('active',['upgrades','ants','research'][i]===tab);
+    b.classList.toggle('active',['upgrades','ants','research','chambers'][i]===tab);
   });
   updateShopUI();
 };
@@ -1076,7 +1256,8 @@ function updateShopUI(){
   document.getElementById('shop-rj').textContent=`💜 ${S.royalJelly} RJ`;
   if(currentTab==='upgrades')el.innerHTML=buildUpgTab();
   else if(currentTab==='ants')el.innerHTML=buildAntTab();
-  else el.innerHTML=buildResTab();
+  else if(currentTab==='research')el.innerHTML=buildResTab();
+  else el.innerHTML=buildChambersTab();
 }
 function buildUpgTab(){
   let h='<div class="upg-grid">';
@@ -1128,6 +1309,37 @@ function buildResTab(){
   return h+'</div>';
 }
 
+function buildChambersTab(){
+  const chs=getChambers();
+  // Underground non-queen nodes only
+  const underground=nodes.map((n,i)=>({n,i})).filter(({n,i})=>i!==QUEEN_NODE&&n.y>SURFACE_Y+6);
+  if(underground.length===0)return'<p style="color:#806040;font:7px Courier;padding:6px">No underground nodes yet. Dig tunnels first.</p>';
+  let h='<div style="font:6px \'Courier New\',monospace;color:#906050;margin-bottom:4px">Build chambers on tunnel nodes. Click node index to assign.</div>';
+  // Chamber type picker
+  h+='<div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:6px">';
+  Object.entries(CHAMBERS).forEach(([id,ch])=>{
+    const count=getChamberCount(id);
+    h+=`<button class="res-btn" style="height:auto;padding:4px 6px;flex:1;min-width:70px" onclick="window._selChamber='${id}'">
+      <span class="btn-icon">${ch.icon}</span>
+      <span class="btn-label"><span class="btn-name">${ch.name}(${count})</span><span class="btn-desc">${ch.desc}</span><span class="btn-cost">${ch.cost}🍎</span></span>
+    </button>`;
+  });
+  h+='</div>';
+  h+='<div style="font:6px \'Courier New\',monospace;color:#806040;margin-bottom:3px">NODES (tap to assign selected chamber):</div>';
+  h+='<div style="display:flex;flex-wrap:wrap;gap:3px">';
+  underground.forEach(({n,i})=>{
+    const existing=chs[String(i)];
+    const depth=n.y>SURFACE_Y+88?'CRYSTAL':n.y>SURFACE_Y+48?'CLAY':'SOIL';
+    const ec=existing?CHAMBERS[existing]?.icon:'○';
+    h+=`<button class="ant-btn" style="height:auto;padding:3px 4px;flex:0 0 auto" onclick="if(window._selChamber){buildChamber(${i},window._selChamber);}else if(${!!existing})window.destroyChamber(${i})">
+      <span style="font-size:9px">${ec}</span>
+      <span class="btn-label"><span class="btn-name">N${i} ${depth}</span><span class="btn-desc">${existing||'empty'}</span></span>
+    </button>`;
+  });
+  h+='</div>';
+  return h;
+}
+
 window.buyUpg=function(id){
   const u=UPGRADES.find(x=>x.id===id);if(!u)return;
   const lv=S.upg[id]||0;if(lv>=u.costs.length)return;
@@ -1157,24 +1369,41 @@ window.buyRes=function(id){
 };
 
 // ── Prestige ──────────────────────────────────────────────────
+let _prestigePayload=null; // saved state while doctrine picker is shown
 window.doPrestige=function(){
   const keepFood=S.research.memory?Math.floor(S.food*.25):0;
   const pp=S.prestige,pr=Object.assign({},S.research),pat=Object.assign({},S.antTypes);
-  const rj=S.royalJelly,pm=S.permMult*1.5;
+  const rj=S.royalJelly,pm=S.permMult*1.5,doc=[...(S.doctrines||[])];
+  _prestigePayload={keepFood,pp,pr,pat,rj,pm,doc};
+  document.getElementById('prestige-overlay').classList.remove('show');
+  // Show doctrine picker
+  const box=document.getElementById('doctrine-choices');
+  box.innerHTML=DOCTRINES.map(d=>`
+    <button class="doc-btn" onclick="window.applyDoctrine('${d.id}')">
+      <b>${d.icon} ${d.name}</b>${d.desc}
+    </button>`).join('');
+  document.getElementById('doctrine-overlay').classList.add('show');
+};
+window.applyDoctrine=function(docId){
+  if(!_prestigePayload)return;
+  const {keepFood,pp,pr,pat,rj,pm,doc}=_prestigePayload;
+  doc.push(docId);
   S=defState();
   S.food=keepFood;S.prestige=pp+1;S.research=pr;S.antTypes=pat;
-  S.royalJelly=rj;S.permMult=pm;
-  S.layer=S.research.crystalEx?2:S.research.deepMine?1:0;
-  prestigeShown=false;ants=[];syncAnts();
-  document.getElementById('prestige-overlay').classList.remove('show');
-  showToast(`Migrated! ×${pm.toFixed(1)} bonus!`);updateShopUI();
+  S.royalJelly=rj;S.permMult=pm;S.doctrines=doc;
+  // Apply doctrine startup effects
+  if(doc.includes('deep')){S.layer=2;S.research.crystalEx=true;S.research.deepMine=true;}
+  else S.layer=S.research.crystalEx?2:S.research.deepMine?1:0;
+  prestigeShown=false;ants=[];syncAnts();_prestigePayload=null;
+  document.getElementById('doctrine-overlay').classList.remove('show');
+  const dName=DOCTRINES.find(d=>d.id===docId)?.name||docId;
+  showToast(`Migrated! ${dName} chosen! ×${pm.toFixed(1)} bonus!`);updateShopUI();
 };
 window.hidePrestige=function(){document.getElementById('prestige-overlay').classList.remove('show');};
 
-// ── Events ────────────────────────────────────────────────────
-let activeEvent=null;
-function triggerEvent(){
-  const e=EVENTS[Math.floor(Math.random()*EVENTS.length)];
+// ── Events (with 5s telegraphing for bad events) ──────────────
+let activeEvent=null,pendingEvent=null,pendingEventTimer=0;
+function fireEvent(e){
   activeEvent=e;
   const ov=document.getElementById('evt-overlay');
   ov.className='show '+(e.type==='good'?'good':'bad');
@@ -1184,6 +1413,18 @@ function triggerEvent(){
   document.getElementById('evt-fill').style.width='100%';
   e.fn();
   setTimeout(()=>{ov.className='';activeEvent=null;},3800);
+}
+function triggerEvent(){
+  const e=EVENTS[Math.floor(Math.random()*EVENTS.length)];
+  if(e.type==='bad'){
+    // Telegraph bad events with a 5s warning
+    pendingEvent=e;pendingEventTimer=5;
+    const w=document.getElementById('warn-overlay');
+    w.textContent=`⚠️ ${e.icon} ${e.name} incoming! (5s)`;
+    w.classList.add('show');
+  }else{
+    fireEvent(e); // good events fire immediately
+  }
 }
 document.getElementById('evt-box').addEventListener('click',()=>{
   document.getElementById('evt-overlay').className='';activeEvent=null;
@@ -1225,6 +1466,26 @@ canvas.addEventListener('click',e=>{
   // Dev reset btn (bottom-right, native coords)
   const rx_n=gameOX+VW*gameDS-36,ry_n=gameOY+VH*gameDS-14;
   if(e.clientX>=rx_n&&e.clientX<=rx_n+34&&e.clientY>=ry_n&&e.clientY<=ry_n+12)hardReset();
+  // Priority pill (bottom-left, native)
+  const pp_n_x=gameOX+4,pp_n_y=gameOY+VH*gameDS-28;
+  if(e.clientX>=pp_n_x&&e.clientX<=pp_n_x+36&&e.clientY>=pp_n_y&&e.clientY<=pp_n_y+12){
+    const modes=['forage','defend','dig','brood','farm'];
+    const cur=modes.indexOf(S.priority||'forage');
+    S.priority=modes[(cur+1)%modes.length];
+    showToast(`Priority: ${S.priority.toUpperCase()}`);
+  }
+  // RJ power buttons (native)
+  const rjBtnDefs=[{cost:3,key:'frenzy'},{cost:2,key:'rjheal'},{cost:1,key:'feast'}];
+  rjBtnDefs.forEach((b,i)=>{
+    const bx=gameOX+4+i*42,by=gameOY+VH*gameDS-44;
+    if(e.clientX>=bx&&e.clientX<=bx+38&&e.clientY>=by&&e.clientY<=by+13){
+      if(S.royalJelly<b.cost){showToast('Not enough RJ!');return;}
+      S.royalJelly-=b.cost;
+      if(b.key==='frenzy'){S.rjFrenzyTimer=30;showToast('⚡ FRENZY! 2× speed 30s!');}
+      else if(b.key==='rjheal'){ants.filter(a=>a.type==='soldier').forEach(a=>{a.hp=a.type==='soldier'&&S.doctrines.includes('war')?3:2;});showToast('💊 Soldiers healed!');}
+      else if(b.key==='feast'){foodSpots.length=0;for(let i=0;i<8;i++)spawnFood();showToast('🍎 Food refreshed!');}
+    }
+  });
 });
 
 // ── Game loop ─────────────────────────────────────────────────
@@ -1254,22 +1515,65 @@ function gameLoop(ts){
   const hb=(1+(S.upg.queenBoost||0)*0.18)*(S.research.queenII?2:1);
   if(S.queenTimer>=20/hb&&S.antCount<getAntMax()){S.antCount++;syncAnts();S.queenTimer=0;}
 
-  // Builder auto-dig
+  // Builder auto-dig (faster in DIG priority)
   if(S.antTypes.builder>0){
-    S.builderTimer=(S.builderTimer||0)+dt*S.antTypes.builder;
+    const digRate=S.priority==='dig'?2:1;
+    S.builderTimer=(S.builderTimer||0)+dt*S.antTypes.builder*digRate;
     if(S.builderTimer>=50){S.builderTimer=0;addTunnel();showToast('Builder dug a tunnel! ⛏️');}
   }
 
-  // Farmer passive
-  if(S.antTypes.farmer>0)addFood(S.antTypes.farmer*0.6*dt);
+  // Farmer passive (x1.5 in FARM priority)
+  if(S.antTypes.farmer>0)addFood(S.antTypes.farmer*0.6*dt*(S.priority==='farm'?1.5:1));
 
-  // Fungal passive (per tunnel node)
+  // Fungal passive (per tunnel node) + chamber fungus farms
   const fl=S.upg.fungal||0;
   if(fl>0)addFood(nodes.length*0.04*fl*dt);
+  const fungChCount=getChamberCount('fungus');
+  if(fungChCount>0)addFood(fungChCount*0.6*dt);
+
+  // Chamber nursery: hatch time bonus (applied via nursery count in getHatchCost)
+  // Chamber crystal passive RJ drip
+  const crystalNodes=nodes.filter((_,i)=>nodes[i].y>SURFACE_Y+95&&getChambers()[String(i)]==='vent').length;
+  if(S.research&&S.research.crystalEx){
+    S.crystalRJAccum=(S.crystalRJAccum||0)+dt*0.008*(1+crystalNodes*0.5);
+    if(S.crystalRJAccum>=1){S.royalJelly+=1;S.crystalRJAccum=0;showToast('Crystal node: +1 RJ 🔷');}
+  }
+
+  // Clay shard drops (handled in ant delivery — tracked via a timer here)
+  // Crystal shard drops (5% per delivery through crystal zone) — in Ant.update TO_QUEEN delivery, checked via nodeY
+
+  // RJ frenzy timer
+  if((S.rjFrenzyTimer||0)>0){S.rjFrenzyTimer-=dt;if(S.rjFrenzyTimer<=0){S.rjFrenzyTimer=0;showToast('Frenzy ended.');}}
+
+  // Event telegraph timer (tick down pending bad event)
+  if(pendingEvent&&pendingEventTimer>0){
+    pendingEventTimer-=dt;
+    const w=document.getElementById('warn-overlay');
+    w.textContent=`⚠️ ${pendingEvent.icon} ${pendingEvent.name} in ${Math.ceil(pendingEventTimer)}s`;
+    if(pendingEventTimer<=0){
+      w.classList.remove('show');
+      fireEvent(pendingEvent);pendingEvent=null;
+    }
+  }
+
+  // Food decay: age spots, remove expired ones (storage chambers protect nearby food)
+  foodSpots.forEach(f=>{
+    const nearStorage=Object.entries(getChambers()).some(([ni,t])=>t==='storage'&&Math.hypot(nodes[parseInt(ni)].x-f.x,nodes[parseInt(ni)].y-f.y)<20);
+    if(!nearStorage)(f.age=(f.age||0)+dt);
+  });
+  foodSpots=foodSpots.filter(f=>(f.age||0)<50);
+
+  // Nurse BROOD doctrine: passive heal wounded soldiers
+  if(S.doctrines&&S.doctrines.includes('brood')&&S.antTypes.nurse>0){
+    ants.filter(a=>a.type==='soldier'&&a.hp<2&&!a.fighting).forEach(a=>{
+      a._healTimer=(a._healTimer||0)+dt;
+      if(a._healTimer>=8){a.hp=Math.min(2,a.hp+1);a._healTimer=0;}
+    });
+  }
 
   // Events
   S.eventTimer-=dt;
-  if(S.eventTimer<=0){S.eventTimer=Math.random()*50+40;if(!activeEvent)triggerEvent();}
+  if(S.eventTimer<=0){S.eventTimer=Math.random()*50+40;if(!activeEvent&&!pendingEvent)triggerEvent();}
 
   // Ants
   ants.forEach(a=>a.update(dt));
