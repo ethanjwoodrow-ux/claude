@@ -1,0 +1,1163 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;background:transparent;overflow:hidden;user-select:none}
+canvas{display:block;position:absolute;top:0;left:0;image-rendering:pixelated;image-rendering:crisp-edges}
+#shop-btn{position:fixed;bottom:8px;left:50%;transform:translateX(-50%);background:#2A1406;border:1px solid #6A3A18;color:#F0C060;font:10px/1 'Courier New',monospace;padding:4px 12px;cursor:pointer;z-index:50;letter-spacing:1px;white-space:nowrap}
+#shop-btn:hover{background:#3A1E0A}
+#shop{position:fixed;bottom:0;left:0;width:100%;background:rgba(10,5,2,0.97);border-top:2px solid #7A4A20;padding:6px 8px;z-index:60;transform:translateY(110%);transition:transform 0.25s cubic-bezier(0.25,0.46,0.45,0.94);pointer-events:none;max-height:70vh;overflow-y:auto}
+#shop.open{transform:translateY(0);pointer-events:auto}
+#shop-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+#colony-name{color:#F8CC18;font:bold 10px 'Courier New',monospace;letter-spacing:2px}
+#shop-close{background:#3A1E08;border:1px solid #6A3A18;color:#F0C060;cursor:pointer;padding:1px 6px;font-size:10px}
+#shop-meta{display:flex;gap:12px;margin-bottom:5px;font:8px 'Courier New',monospace}
+#shop-food{color:#F8D820}#shop-rj{color:#CC66FF}
+#shop-tabs{display:flex;gap:3px;margin-bottom:6px}
+.tab-btn{background:#1E0E06;border:1px solid #4A2810;color:#A08060;font:7px 'Courier New',monospace;cursor:pointer;padding:3px 8px;letter-spacing:1px}
+.tab-btn.active{background:#3A1E08;border-color:#F8CC18;color:#F8CC18}
+#tab-content{min-height:80px}
+.upg-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
+.ant-grid{display:grid;grid-template-columns:repeat(1,1fr);gap:3px}
+.res-grid{display:grid;grid-template-columns:repeat(1,1fr);gap:3px}
+.upg-btn,.ant-btn,.res-btn{background:#1E0E06;border:1px solid #4A2810;color:#C8A070;font:7px/1.3 'Courier New',monospace;cursor:pointer;padding:4px 3px;text-align:center;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;transition:background 0.1s}
+.upg-btn{height:52px}
+.ant-btn{height:36px;flex-direction:row;justify-content:flex-start;gap:6px;padding:4px 8px}
+.res-btn{height:40px;flex-direction:row;justify-content:flex-start;gap:6px;padding:4px 8px}
+.upg-btn:hover:not(.maxed):not(.locked),.ant-btn:hover:not(.locked),.res-btn:hover:not(.done),.res-btn:hover:not(.locked){background:#2E1A0A;border-color:#7A4828}
+.upg-btn.maxed{background:#0A1E0A;border-color:#2A5A2A;color:#5AAA5A;cursor:default}
+.res-btn.done{background:#0A1E0A;border-color:#2A5A2A;color:#5AAA5A;cursor:default}
+.locked{opacity:0.4;cursor:not-allowed}
+.btn-icon{font-size:13px;line-height:1}
+.btn-label{display:flex;flex-direction:column;align-items:flex-start;gap:1px}
+.btn-name{font-size:7px;color:#E0C090}
+.btn-desc{font-size:6px;color:#A08060}
+.btn-cost{font-size:7px;color:#F8D820}
+.upg-icon{font-size:13px;line-height:1;display:block}
+.upg-name{font-size:6.5px;color:#E0C090}
+.upg-desc{font-size:6px;color:#A08060}
+.upg-cost{font-size:7px;color:#F8D820}
+#evt-overlay{position:fixed;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;z-index:70;pointer-events:none}
+#evt-overlay.show{pointer-events:auto}
+#evt-box{background:rgba(8,4,2,0.96);border:2px solid #7A4A20;padding:12px 16px;text-align:center;min-width:180px;max-width:240px;transform:translateY(-18px) scale(0.88);opacity:0;transition:all 0.3s cubic-bezier(0.34,1.56,0.64,1);cursor:pointer}
+#evt-overlay.show #evt-box{transform:translateY(0) scale(1);opacity:1}
+#evt-overlay.good #evt-box{border-color:#3A8A3A;box-shadow:0 0 18px rgba(80,200,80,0.2)}
+#evt-overlay.bad #evt-box{border-color:#8A2A2A;box-shadow:0 0 18px rgba(200,60,60,0.2)}
+#evt-icon{font-size:28px;display:block;margin-bottom:5px}
+#evt-name{font:bold 10px/1.2 'Courier New',monospace;color:#F0D090;letter-spacing:1px;display:block;margin-bottom:4px}
+#evt-desc{font:8px/1.5 'Courier New',monospace;color:#B09060;display:block;margin-bottom:7px}
+#evt-bar{height:3px;background:#2A1808;border-radius:2px;overflow:hidden}
+#evt-fill{height:100%;background:#6A4028;transition:width 0.1s linear;width:100%}
+#evt-overlay.good #evt-fill{background:#3A7A3A}
+#evt-overlay.bad #evt-fill{background:#7A2A2A}
+#prestige-overlay{position:fixed;top:0;left:0;width:100%;height:100%;display:flex;align-items:center;justify-content:center;z-index:80;background:rgba(0,0,0,0.7);display:none}
+#prestige-overlay.show{display:flex}
+#prestige-box{background:#0C0604;border:2px solid #F8CC18;padding:16px 20px;text-align:center;max-width:220px}
+#prestige-box h3{color:#F8CC18;font:bold 11px 'Courier New',monospace;letter-spacing:2px;margin-bottom:8px}
+#prestige-box p{color:#C0A060;font:8px 'Courier New',monospace;line-height:1.5;margin-bottom:10px}
+.prestige-btn{background:#2A1008;border:1px solid #F8CC18;color:#F8CC18;font:bold 9px 'Courier New',monospace;padding:4px 12px;cursor:pointer;margin:0 4px}
+.prestige-btn:hover{background:#3A1808}
+.cancel-btn{border-color:#6A3A18;color:#A08060}
+#toast{position:fixed;top:26px;left:50%;transform:translateX(-50%);background:rgba(248,216,32,0.95);color:#2A1506;font:bold 8px 'Courier New',monospace;padding:3px 10px;white-space:nowrap;opacity:0;transition:opacity 0.3s;pointer-events:none;z-index:90;letter-spacing:1px}
+#toast.show{opacity:1}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<button id="shop-btn">&#x1FA99; SHOP</button>
+<div id="shop">
+  <div id="shop-header">
+    <span id="colony-name">COLONY SHOP</span>
+    <button id="shop-close">&#x2715;</button>
+  </div>
+  <div id="shop-meta">
+    <span id="shop-food">&#x1F34E; 0 food</span>
+    <span id="shop-rj">&#x1F49C; 0 RJ</span>
+  </div>
+  <div id="shop-tabs">
+    <button class="tab-btn active" onclick="setTab('upgrades')">UPGRADES</button>
+    <button class="tab-btn" onclick="setTab('ants')">ANT TYPES</button>
+    <button class="tab-btn" onclick="setTab('research')">RESEARCH</button>
+  </div>
+  <div id="tab-content"></div>
+</div>
+<div id="evt-overlay">
+  <div id="evt-box">
+    <span id="evt-icon"></span><span id="evt-name"></span>
+    <span id="evt-desc"></span>
+    <div id="evt-bar"><div id="evt-fill"></div></div>
+  </div>
+</div>
+<div id="prestige-overlay">
+  <div id="prestige-box">
+    <h3>&#x1F31F; MIGRATE COLONY?</h3>
+    <p>Reset food, ants &amp; upgrades.<br>Keep research &amp; &#xD7;1.5 permanent bonus.</p>
+    <button class="prestige-btn" onclick="doPrestige()">MIGRATE</button>
+    <button class="prestige-btn cancel-btn" onclick="hidePrestige()">CANCEL</button>
+  </div>
+</div>
+<div id="toast"></div>
+<script>
+'use strict';
+
+// ── Canvas & constants ────────────────────────────────────────
+const VW=135,VH=170,SURFACE_Y=36;
+let SCALE=2;
+const canvas=document.getElementById('c');
+const dctx=canvas.getContext('2d');
+const vc=new OffscreenCanvas(VW,VH);
+const vctx=vc.getContext('2d');
+
+function resizeCanvas(){
+  SCALE=Math.min(window.innerWidth/VW,window.innerHeight/VH);
+  canvas.width=window.innerWidth;canvas.height=window.innerHeight;
+}
+resizeCanvas();window.addEventListener('resize',resizeCanvas);
+
+// ── Upgrades (8 distinct types) ───────────────────────────────
+const UPGRADES=[
+  {id:'speed',    icon:'⚡',name:'SPEED',      desc:'All ants move faster',         costs:[30,80,200,500,1200,3000]},
+  {id:'carry',    icon:'🌿',name:'CARRY',      desc:'+1 food per trip each level',  costs:[50,130,300,750,1800,4500]},
+  {id:'antMax',   icon:'🐜',name:'NEST SIZE',  desc:'+5 max ants per level',        costs:[40,100,250,600,1500,3800]},
+  {id:'queenBoost',icon:'👑',name:'BROOD',     desc:'Queen hatches ants faster',    costs:[80,200,500,1200,3000,7500]},
+  {id:'sniffer',  icon:'👃',name:'SNIFFER',    desc:'More food spots appear',       costs:[60,150,350,900,2200,5500]},
+  {id:'ventilation',icon:'💨',name:'VENTILATION',desc:'Deep tunnel bonus food',    costs:[120,300,700,1600,4000,10000]},
+  {id:'armor',    icon:'🛡️',name:'ARMOR',      desc:'Reduce all event damage',      costs:[100,250,600,1500,3800,9500]},
+  {id:'fungal',   icon:'🍄',name:'FUNGAL',     desc:'+0.04 food/s per tunnel node', costs:[200,500,1200,3000,7500,18000]},
+];
+
+// ── Research ──────────────────────────────────────────────────
+const RESEARCH=[
+  {id:'pheromone', icon:'🔮',name:'PHEROMONE',   desc:'Workers go direct to food', cost:1},
+  {id:'incubation',icon:'🥚',name:'INCUBATION',  desc:'Eggs hatch every 12 food',  cost:1},
+  {id:'deepMine',  icon:'⛏️',name:'DEEP MINING', desc:'Unlock clay layer',         cost:2},
+  {id:'crystalEx', icon:'💎',name:'CRYSTAL DIG', desc:'Unlock crystal layer',      cost:3},
+  {id:'memory',    icon:'🧠',name:'MEMORY',       desc:'Keep 25% food on migrate',  cost:2},
+  {id:'queenII',   icon:'👸',name:'TWIN QUEENS',  desc:'2nd queen doubles hatch',   cost:5,prestige:1},
+];
+
+// ── Ant types ─────────────────────────────────────────────────
+const ANT_TYPES=[
+  {id:'scout',  icon:'🟡',name:'SCOUT',  desc:'30% faster, finds food directly', cost:120,color:[220,200,0],  max:8},
+  {id:'soldier',icon:'🔴',name:'SOLDIER',desc:'Each -8% event damage (stacks)',  cost:150,color:[200,40,40],  max:8},
+  {id:'nurse',  icon:'🟣',name:'NURSE',  desc:'Each cuts hatch cost by 8%',      cost:200,color:[160,60,200], max:8},
+  {id:'builder',icon:'⚫',name:'BUILDER',desc:'Auto-digs tunnel every 50s',       cost:180,color:[80,80,80],   max:8},
+  {id:'farmer', icon:'🟢',name:'FARMER', desc:'+0.6 food/sec passive each',      cost:250,color:[40,160,40],  max:8},
+];
+
+// ── Save / State ──────────────────────────────────────────────
+const SAVE_KEY='antColony_v5';
+const COLONY_TITLES=['Nest','Burrow','Colony','Hive','Empire','Supercolony','LEGEND'];
+
+function defState(){return{
+  food:0,totalFood:0,antCount:3,
+  upg:{speed:0,carry:0,antMax:0,queenBoost:0,sniffer:0,ventilation:0,armor:0,fungal:0},
+  antTypes:{scout:0,soldier:0,nurse:0,builder:0,farmer:0},
+  research:{pheromone:false,incubation:false,deepMine:false,crystalEx:false,memory:false,queenII:false},
+  royalJelly:0,prestige:0,layer:0,
+  mult:1,multTimer:0,queenTimer:0,eventTimer:Math.random()*10+8,
+  permMult:1,rainTimer:0,builderTimer:0,
+};}
+
+let S=defState();
+function saveState(){try{localStorage.setItem(SAVE_KEY,JSON.stringify(S));}catch(e){}}
+function loadState(){
+  try{
+    const d=localStorage.getItem(SAVE_KEY);
+    if(d){const p=JSON.parse(d);S=Object.assign(defState(),p);S.upg=Object.assign(defState().upg,p.upg||{});S.antTypes=Object.assign(defState().antTypes,p.antTypes||{});S.research=Object.assign(defState().research,p.research||{});}
+  }catch(e){S=defState();}
+}
+loadState();setInterval(saveState,10000);
+
+// ── Events (20 total) ─────────────────────────────────────────
+const EVENTS=[
+  {id:'raid',     icon:'🐛',name:'APHID RAID',      desc:'Lost 20% food!',              type:'bad',
+   fn:()=>{const dmg=Math.max(0.2,0.8-(S.antTypes.soldier||0)*0.08-(S.upg.armor||0)*0.12);S.food=Math.floor(S.food*dmg);showToast('RAID! Food lost!');}},
+  {id:'feast',    icon:'🍎',name:'FRUIT FALL',       desc:'+80 food windfall!',          type:'good',
+   fn:()=>{addFood(80);}},
+  {id:'rain',     icon:'🌧️',name:'RAIN',             desc:'Ants slow for 20s',           type:'bad',
+   fn:()=>{S.rainTimer=20;}},
+  {id:'rjdrop',   icon:'💜',name:'ROYAL JELLY',      desc:'+2 Royal Jelly!',             type:'good',
+   fn:()=>{S.royalJelly+=2;showToast('+2 RJ 💜');}},
+  {id:'stomp',    icon:'🦶',name:'BOOT STOMP',       desc:'Lost 1 ant!',                 type:'bad',
+   fn:()=>{S.antCount=Math.max(1,S.antCount-1);syncAnts();}},
+  {id:'butterfly',icon:'🦋',name:'BUTTERFLY VISIT',  desc:'×2 food for 20s!',            type:'good',
+   fn:()=>{S.mult=2;S.multTimer=20;}},
+  {id:'fungus',   icon:'🍄',name:'FUNGUS BLOOM',     desc:'+60 food bonus!',             type:'good',
+   fn:()=>{addFood(60);}},
+  {id:'surge',    icon:'🏔️',name:'COLONY SURGE',     desc:'+3 ants free!',               type:'good',
+   fn:()=>{S.antCount=Math.min(getAntMax(),S.antCount+3);syncAnts();}},
+  {id:'drought',  icon:'☀️',name:'DROUGHT',           desc:'Food spots shrink for 60s',  type:'bad',
+   fn:()=>{droughtTimer=60;}},
+  {id:'eggcache', icon:'🥚',name:'EGG CACHE',        desc:'+5 free ants!',               type:'good',
+   fn:()=>{S.antCount=Math.min(getAntMax(),S.antCount+5);syncAnts();}},
+  {id:'aphidfarm',icon:'🌱',name:'APHID FARM',       desc:'+3 food/s for 60s!',          type:'good',
+   fn:()=>{aphidTimer=60;}},
+  {id:'meteor',   icon:'💫',name:'METEOR FRAGMENT',  desc:'+600 food +1 RJ!',            type:'good',
+   fn:()=>{addFood(600);S.royalJelly+=1;showToast('+600 food +1 RJ!');}},
+  {id:'beetle',   icon:'🪲',name:'BEETLE ATTACK',    desc:'Lost ants if no soldiers!',   type:'bad',
+   fn:()=>{if(!(S.antTypes.soldier>0)){S.antCount=Math.max(1,S.antCount-2);syncAnts();}S.food=Math.floor(S.food*Math.max(0.1,0.85-(S.upg.armor||0)*0.1));showToast('BEETLE! 🪲');}},
+  {id:'windfall', icon:'🌟',name:'LUCKY FIND',       desc:'×3 food for 15s!',            type:'good',
+   fn:()=>{S.mult=3;S.multTimer=15;}},
+  {id:'collapse', icon:'💥',name:'TUNNEL COLLAPSE',  desc:'Lost 2 ants!',                type:'bad',
+   fn:()=>{S.antCount=Math.max(1,S.antCount-2);syncAnts();}},
+  {id:'queengift',icon:'👑',name:'QUEEN GIFT',       desc:'+3 RJ! Hatch boosted!',       type:'good',
+   fn:()=>{S.royalJelly+=3;S.queenTimer=0;showToast('+3 RJ! Queen pleased!');}},
+  {id:'sunflare', icon:'🌞',name:'SUN FLARE',        desc:'+150 food burst!',             type:'good',
+   fn:()=>{addFood(150);}},
+  {id:'pesticide',icon:'☠️',name:'PESTICIDE SPRAY', desc:'Lost 30% food + 2 ants!',     type:'bad',
+   fn:()=>{S.food=Math.floor(S.food*Math.max(0.1,0.7-(S.upg.armor||0)*0.1));S.antCount=Math.max(1,S.antCount-2);syncAnts();showToast('PESTICIDE! ☠️');}},
+  {id:'pollinator',icon:'🐝',name:'BEE ALLIANCE',   desc:'×2 food for 30s + 50 food!',  type:'good',
+   fn:()=>{S.mult=2;S.multTimer=30;addFood(50);}},
+  {id:'earthquake',icon:'🌍',name:'EARTHSHAKE',     desc:'Tunnel collapse, -2 ants',    type:'bad',
+   fn:()=>{
+     S.antCount=Math.max(1,S.antCount-2);syncAnts();
+     // Only remove a leaf edge (degree-1 endpoint) — can't disconnect main graph
+     const leafEdges=edges.filter(([a,b],ei)=>{
+       const da=edges.filter(e=>e[0]===a||e[1]===a).length;
+       const db=edges.filter(e=>e[0]===b||e[1]===b).length;
+       return (da===1||db===1)&&a!==QUEEN_NODE&&b!==QUEEN_NODE;
+     });
+     if(leafEdges.length){
+       const rm=leafEdges[Math.floor(Math.random()*leafEdges.length)];
+       edges.splice(edges.indexOf(rm),1);
+     }
+     showToast('EARTHSHAKE! 🌍');
+   }},
+];
+let droughtTimer=0,aphidTimer=0;
+
+// ── Tunnel graph (queen at bottom, tunnels branch UP to surface) ───
+const QUEEN_NODE=0;
+let nodes=[
+  {x:67,y:155},                                              // 0: Queen chamber
+  {x:37,y:130},{x:67,y:126},{x:100,y:130},                 // 1-3: Crystal zone
+  {x:18,y:106},{x:50,y:101},{x:88,y:101},{x:118,y:105},   // 4-7: Clay zone
+  {x:12,y:74},{x:38,y:70},{x:67,y:66},{x:98,y:70},{x:122,y:74}, // 8-12: Upper
+  {x:22,y:SURFACE_Y+2},{x:47,y:SURFACE_Y+1},{x:67,y:SURFACE_Y+1},{x:88,y:SURFACE_Y+1},{x:112,y:SURFACE_Y+2}, // 13-17: exits
+];
+let edges=[
+  [0,1],[0,2],[0,3],
+  [1,4],[1,5],[2,5],[2,6],[3,6],[3,7],
+  [4,8],[5,9],[5,10],[6,10],[6,11],[7,12],
+  [8,13],[9,13],[9,14],[10,14],[10,15],[11,15],[11,16],[12,16],[12,17],
+];
+
+function addTunnel(){
+  const tips=[];
+  nodes.forEach((n,i)=>{
+    if(n.y<SURFACE_Y){return;}
+    const deg=edges.filter(e=>e[0]===i||e[1]===i).length;
+    if(deg<=2)tips.push(i);
+  });
+  const base=tips[Math.floor(Math.random()*tips.length)]??1;
+  const bn=nodes[base];
+  // New node is deeper (higher y) or laterally offset
+  const nx=Math.max(8,Math.min(VW-8,bn.x+(Math.random()*30-15)));
+  const ny=Math.min(VH-20,bn.y+(Math.random()*18+8));
+  nodes.push({x:nx,y:ny});
+  edges.push([base,nodes.length-1]);
+  // Also connect to nearest existing node for more routes
+  if(Math.random()<0.4&&nodes.length>5){
+    let best=-1,bestD=999;
+    nodes.forEach((_,i)=>{if(i===nodes.length-1)return;const d=Math.abs(nodes[i].x-nx)+Math.abs(nodes[i].y-ny);if(d<bestD&&d>8){bestD=d;best=i;}});
+    if(best>=0)edges.push([best,nodes.length-1]);
+  }
+}
+
+// ── Food types ────────────────────────────────────────────────
+const FOOD_TYPES=[
+  // ── Good ──────────────────────────────────────────────────────
+  {id:'leaf',   col:'#2E8010',hl:'#60CC28',val:1,  w:42, name:'Leaf',     bad:false},
+  {id:'berry',  col:'#BB1818',hl:'#FF5040',val:4,  w:26, name:'Berry',    bad:false},
+  {id:'sugar',  col:'#D8E8FF',hl:'#FFFFFF',val:10, w:13, name:'Sugar',    bad:false},
+  {id:'diamond',col:'#20AAFF',hl:'#A0DDFF',val:60, w:2,  name:'Diamond',  bad:false},
+  // ── Bad ───────────────────────────────────────────────────────
+  {id:'poison', col:'#7010A8',hl:'#C050FF',val:0,  w:7,  name:'Poison Shroom', bad:true,
+   effect:()=>{poisonTimer=12;showToast('🍄 POISON! Ants crawl at 35% speed!');}},
+  {id:'rot',    col:'#5A3A08',hl:'#8A5A18',val:0,  w:6,  name:'Rotten Food',   bad:true,
+   effect:()=>{const lost=Math.max(5,Math.floor(S.food*0.08));S.food=Math.max(0,S.food-lost);showToast(`🤢 ROTTEN! -${Math.floor(lost)} food!`);}},
+  {id:'trap',   col:'#D08010',hl:'#FFB830',val:0,  w:5,  name:'Sticky Trap',   bad:true,
+   effect:(ant)=>{ant.frozenTimer=9;showToast('🕸️ TRAPPED! Ant stuck 9s!');}},
+  {id:'wasp',   col:'#F0D000',hl:'#FFE840',val:0,  w:4,  name:'Wasp Nest',     bad:true,
+   effect:()=>{enemies.push(new Enemy('wasp'));enemies.push(new Enemy('wasp'));showToast('🐝 WASPS! 2 wasps spawned!');}},
+  {id:'bait',   col:'#8A0020',hl:'#DD2040',val:0,  w:4,  name:'Ant Bait',      bad:true,
+   effect:()=>{enemies.push(new Enemy('antEnemy'));enemies.push(new Enemy('antEnemy'));showToast('☠️ BAIT! Enemy ants incoming!');}},
+  {id:'acid',   col:'#40CC10',hl:'#A0FF40',val:0,  w:4,  name:'Acid Drop',     bad:true,
+   effect:()=>{const n=Math.min(4,foodSpots.length);foodSpots.splice(0,n);showToast(`💚 ACID! ${n} food spots dissolved!`);}},
+  {id:'freeze', col:'#80C8FF',hl:'#DFFFFF',val:0,  w:4,  name:'Ice Shard',     bad:true,
+   effect:()=>{S.rainTimer=Math.max(S.rainTimer,25);showToast('🧊 FREEZE! Ants slow 25s!');}},
+];
+function pickFoodType(){
+  const total=FOOD_TYPES.reduce((s,t)=>s+t.w,0);
+  let r=Math.random()*total;
+  for(const t of FOOD_TYPES){r-=t.w;if(r<=0)return t;}
+  return FOOD_TYPES[0];
+}
+
+// ── Food spots (surface only, sitting on grass) ───────────────
+const MAX_FOOD_SPOTS=14;
+let foodSpots=[];
+let poisonTimer=0;
+function spawnFood(){
+  if(foodSpots.length>=(droughtTimer>0?5:MAX_FOOD_SPOTS))return;
+  const type=pickFoodType();
+  // y: sits right on the grass surface (SURFACE_Y-3 to SURFACE_Y+1)
+  foodSpots.push({x:Math.random()*(VW-20)+10, y:SURFACE_Y-2+Math.floor(Math.random()*3), type});
+}
+for(let i=0;i<6;i++)spawnFood();
+
+// ── Helpers ───────────────────────────────────────────────────
+function getAntMax(){return 10+(S.upg.antMax||0)*5;}
+function getSpeed(){
+  let sp=0.52+(S.upg.speed||0)*0.18;
+  if(S.rainTimer>0)sp*=0.5;
+  if(poisonTimer>0)sp*=0.35;
+  return sp*(1+(S.antTypes.scout||0)*0.06);
+}
+function getCarry(){return 1+(S.upg.carry||0);}
+function getHatchCost(){
+  let base=S.research.incubation?12:18;
+  return Math.max(3,Math.floor(base*(1-Math.min(0.7,(S.antTypes.nurse||0)*0.08))));
+}
+function getVentBonus(nodeY){
+  const v=S.upg.ventilation||0;if(!v)return 1;
+  if(nodeY>SURFACE_Y+88)return 1+0.08+v*0.07;
+  if(nodeY>SURFACE_Y+52)return 1+0.04+v*0.04;
+  return 1;
+}
+const RJ_MILESTONES=[500,2000,5000,10000,25000,60000];
+function addFood(n){
+  const gain=n*S.mult*S.permMult*(1+(S.antTypes.farmer||0)*0.05);
+  const prev=S.totalFood;S.food+=gain;S.totalFood+=gain;
+  RJ_MILESTONES.forEach(m=>{if(prev<m&&S.totalFood>=m){S.royalJelly++;showToast('Milestone! +1 RJ 💜');}});
+  checkPrestigePrompt();
+}
+function checkPrestigePrompt(){
+  if(S.totalFood>=5000&&!prestigeShown){prestigeShown=true;document.getElementById('prestige-overlay').classList.add('show');}
+}
+let prestigeShown=S.prestige>0||S.totalFood>=5000;
+
+// ── Ant class ─────────────────────────────────────────────────
+class Ant{
+  constructor(type='worker'){
+    this.type=type;
+    const n=nodes[QUEEN_NODE];
+    this.x=n.x+(Math.random()*10-5);this.y=n.y+(Math.random()*6-3);
+    this.state='WANDER';this.nodeIdx=QUEEN_NODE;this.targetNode=null;
+    this.targetFood=null;this.carry=0;this.wanderT=Math.random()*3;
+    this.facing=1;this.legAnim=Math.random()*Math.PI*2;
+    this.stuckTimer=0;this.fighting=null;this.frozenTimer=0;
+  }
+  adjNodes(){
+    return edges.filter(e=>e[0]===this.nodeIdx||e[1]===this.nodeIdx).map(e=>e[0]===this.nodeIdx?e[1]:e[0]);
+  }
+  pickNext(dir){
+    const adj=this.adjNodes();
+    if(adj.length===0){
+      // Isolated node — teleport back to queen
+      this.x=nodes[QUEEN_NODE].x;this.y=nodes[QUEEN_NODE].y;this.nodeIdx=QUEEN_NODE;
+      this.state='WANDER';this.targetNode=null;this.targetFood=null;this.carry=0;
+      return null;
+    }
+    const filtered=dir==='up'?adj.filter(i=>nodes[i].y<nodes[this.nodeIdx].y):adj.filter(i=>nodes[i].y>nodes[this.nodeIdx].y);
+    const pool=filtered.length?filtered:adj;
+    const next=pool[Math.floor(Math.random()*pool.length)];
+    return next===this.nodeIdx?pool[(pool.indexOf(next)+1)%pool.length]:next;
+  }
+  _move(tx,ty,spd,dt){
+    const dx=tx-this.x,dy=ty-this.y,d=Math.sqrt(dx*dx+dy*dy);
+    if(d<1.5)return true;
+    this.x+=dx/d*spd*dt;this.y+=dy/d*spd*dt;if(dx!==0)this.facing=dx>0?1:-1;
+    return false;
+  }
+  update(dt){
+    this.legAnim+=dt*10;
+    // If fighting or frozen, pause movement
+    if(this.fighting){this.stuckTimer=0;return;}
+    if(this.frozenTimer>0){this.frozenTimer-=dt;return;}
+    // Stuck watchdog: if same node for >5s while not wandering, reset
+    this.stuckTimer+=dt;
+    if(this.stuckTimer>5&&this.state!=='WANDER'){
+      this.x=nodes[QUEEN_NODE].x;this.y=nodes[QUEEN_NODE].y;this.nodeIdx=QUEEN_NODE;
+      this.state='WANDER';this.targetNode=null;this.targetFood=null;this.carry=0;this.stuckTimer=0;
+      return;
+    }
+    const spd=(getSpeed()*(this.type==='scout'?1.3:1))*50;
+    const qn=nodes[QUEEN_NODE];
+
+    if(this.state==='WANDER'){
+      this.wanderT-=dt;
+      if(this.wanderT<=0){
+        if(foodSpots.length&&Math.random()<0.78){
+          this.state='TO_FOOD';
+          if(S.research.pheromone||this.type==='scout'){
+            const cn=nodes[this.nodeIdx];
+            this.targetFood=foodSpots.reduce((a,b)=>(((a.x-cn.x)**2+(a.y-cn.y)**2)<((b.x-cn.x)**2+(b.y-cn.y)**2))?a:b);
+          }else{this.targetFood=foodSpots[Math.floor(Math.random()*foodSpots.length)];}
+        }else{
+          this.targetNode=this.pickNext(Math.random()<0.5?'up':'down');
+          this.wanderT=Math.random()*2+0.5;
+        }
+      }
+      if(this.targetNode!==null){
+        const tn=nodes[this.targetNode];
+        if(this._move(tn.x,tn.y,spd,dt)){this.x=tn.x;this.y=tn.y;this.nodeIdx=this.targetNode;this.targetNode=null;this.stuckTimer=0;}
+      }
+    }
+
+    else if(this.state==='TO_FOOD'){
+      const tf=this.targetFood;
+      if(!tf||!foodSpots.includes(tf)){this.state='WANDER';this.targetFood=null;return;}
+      if(this.targetNode!==null){
+        const tn=nodes[this.targetNode];
+        if(this._move(tn.x,tn.y,spd,dt)){this.x=tn.x;this.y=tn.y;this.nodeIdx=this.targetNode;this.targetNode=null;this.stuckTimer=0;}
+      }else{
+        const upNodes=this.adjNodes().filter(i=>nodes[i].y<nodes[this.nodeIdx].y);
+        if(upNodes.length){
+          this.targetNode=upNodes[Math.floor(Math.random()*upNodes.length)];
+        }else{
+          // At surface exit — walk to food directly
+          const done=this._move(tf.x,tf.y,spd,dt);
+          if(done||Math.sqrt((tf.x-this.x)**2+(tf.y-this.y)**2)<2.5){
+            if(tf.type&&tf.type.bad){
+              // Bad food — trigger effect
+              if(tf.type.effect)tf.type.effect(this);
+            }else{
+              this.carry=(tf.type?tf.type.val:1)*getCarry()*getVentBonus(nodes[this.nodeIdx].y);
+            }
+            const idx=foodSpots.indexOf(tf);if(idx>=0)foodSpots.splice(idx,1);
+            this.targetFood=null;
+            if(this.carry>0){this.state='TO_QUEEN';this.targetNode=this.pickNext('down');}
+            else{this.state='WANDER';this.wanderT=1.5;}
+          }
+        }
+      }
+    }
+
+    else if(this.state==='TO_QUEEN'){
+      if(this.nodeIdx===QUEEN_NODE){
+        const dx=qn.x-this.x,dy=qn.y-this.y,d=Math.sqrt(dx*dx+dy*dy);
+        if(d<3){addFood(this.carry);this.carry=0;this.state='WANDER';this.wanderT=Math.random()*2+1;this.stuckTimer=0;}
+        else{this._move(qn.x,qn.y,spd,dt);}
+      }else{
+        if(this.targetNode===null){const nx=this.pickNext('down');if(nx===null)return;this.targetNode=nx;}
+        const tn=nodes[this.targetNode];
+        if(this._move(tn.x,tn.y,spd,dt)){this.x=tn.x;this.y=tn.y;this.nodeIdx=this.targetNode;this.targetNode=null;this.stuckTimer=0;}
+      }
+    }
+  }
+}
+
+let ants=[];
+function syncAnts(){
+  while(ants.length>S.antCount){const a=ants.pop();if(a&&a.fighting){a.fighting.target=null;a.fighting=null;}}
+  if(ants.length<S.antCount){
+    const have={};ants.forEach(a=>have[a.type]=(have[a.type]||0)+1);
+    const needed=[];
+    for(const t of['scout','soldier','nurse','builder','farmer']){
+      const w=S.antTypes[t]||0,g=have[t]||0;
+      for(let i=g;i<w;i++)needed.push(t);
+    }
+    while(needed.length+ants.length<S.antCount)needed.push('worker');
+    needed.forEach(tp=>ants.push(new Ant(tp)));
+  }
+}
+syncAnts();
+
+// ── Enemy system ──────────────────────────────────────────────
+class Enemy{
+  constructor(type){
+    this.type=type; // 'beetle','antEnemy','wasp'
+    this.x=Math.random()<0.5?-8:VW+8;
+    this.y=type==='wasp'?SURFACE_Y-8:SURFACE_Y-3;
+    this.hp=type==='beetle'?2:1;
+    this.speed=(type==='beetle'?14:type==='wasp'?32:22)*(Math.random()*0.4+0.8);
+    this.facing=this.x<0?1:-1;
+    this.dead=false;this.fightTimer=0;this.target=null;
+    this.legAnim=Math.random()*Math.PI*2;
+  }
+  update(dt){
+    if(this.dead)return;
+    this.legAnim+=dt*9;
+    // If fighting an ant, wait out the fight timer
+    if(this.target){
+      if(!ants.includes(this.target)){this.target=null;return;}
+      this.fightTimer-=dt;
+      if(this.fightTimer<=0){
+        // Kill the ant
+        const idx=ants.indexOf(this.target);
+        if(idx>=0){ants.splice(idx,1);S.antCount=Math.max(1,S.antCount-1);}
+        this.target.fighting=null;
+        this.target=null;this.hp--;
+        if(this.hp<=0){this.dead=true;showToast(this.type==='beetle'?'Beetle killed! 💥':'Enemy ant dead!');}
+      }
+      return;
+    }
+    // Walk toward center of screen (tunnel entrance area)
+    this.x+=this.speed*this.facing*dt;
+    if(this.x>VW+20||this.x<-20){this.dead=true;return;}
+    // Reverse if past center
+    if((this.facing>0&&this.x>VW*0.65)||(this.facing<0&&this.x<VW*0.35))this.facing*=-1;
+    // Find surface ants to attack
+    const freeAnts=ants.filter(a=>a.y<SURFACE_Y+8&&!a.fighting);
+    let nearest=null,nearestD=18;
+    freeAnts.forEach(a=>{const d=Math.hypot(a.x-this.x,a.y-this.y);if(d<nearestD){nearestD=d;nearest=a;}});
+    if(nearest){
+      this.target=nearest;nearest.fighting=this;
+      this.fightTimer=this.type==='beetle'?2.2:1.0;
+      showToast(this.type==='beetle'?'🪲 BEETLE ATTACK!':'🐜 ENEMY ANT!');
+    }
+  }
+}
+let enemies=[];
+let enemySpawnTimer=35;
+
+function spawnEnemy(){
+  if(enemies.filter(e=>!e.dead).length>=4)return;
+  const type=Math.random()<0.35?'beetle':'antEnemy';
+  enemies.push(new Enemy(type));
+}
+
+function drawEnemy(c,en){
+  c.save();c.translate(en.x,en.y);if(en.facing<0)c.scale(-1,1);
+  if(en.type==='beetle'){
+    // Green beetle: oval shell, legs
+    c.fillStyle='#1A6A08';c.fillRect(-5,-3,10,5);
+    c.fillStyle='#2A9A10';c.fillRect(-4,-3,8,1);c.fillRect(-5,-2,1,1);c.fillRect(4,-2,1,1);
+    c.fillStyle='#0A3A04';c.fillRect(-3,1,6,1);
+    // Shell highlight
+    c.fillStyle='rgba(100,200,60,0.5)';c.fillRect(-3,-3,3,2);
+    // Eyes
+    c.fillStyle='#FF0';c.fillRect(3,-2,2,2);c.fillStyle='#000';c.fillRect(4,-2,1,1);
+    // Legs
+    c.fillStyle='#0A3A04';
+    [[-3,2],[-1,2],[1,2],[-3,-4],[-1,-4],[1,-4]].forEach(([lx,ly])=>c.fillRect(lx,ly,1,2));
+  }else if(en.type==='wasp'){
+    // Yellow-black wasp: striped abdomen, wings
+    c.fillStyle='#F0D000';c.fillRect(-5,-2,4,3);
+    c.fillStyle='#000';c.fillRect(-4,-2,1,3);c.fillRect(-2,-2,1,3);
+    c.fillStyle='#F0D000';c.fillRect(-1,-2,4,3);
+    c.fillStyle='#000';c.fillRect(2,-2,1,2);
+    // Head
+    c.fillStyle='#F0D000';c.fillRect(3,-2,3,3);c.fillStyle='#000';c.fillRect(5,-1,1,1);
+    // Wings (translucent blue)
+    c.fillStyle='rgba(180,220,255,0.7)';c.fillRect(-3,-5,8,3);
+    c.fillStyle='rgba(160,200,240,0.5)';c.fillRect(-4,-4,4,2);c.fillRect(1,-4,4,2);
+    // Stinger
+    c.fillStyle='#A08000';c.fillRect(-6,-1,1,1);c.fillRect(-7,0,1,1);
+    // Legs
+    c.fillStyle='#806000';
+    const lp2=Math.sin(en.legAnim)*1|0;
+    [[-2,1+lp2],[1,2-lp2],[-2,-3-lp2],[1,-3+lp2]].forEach(([lx,ly])=>c.fillRect(lx,ly,1,2));
+  }else{
+    // Enemy ant (red)
+    c.fillStyle='#8A0808';c.fillRect(-6,-2,5,3);
+    c.fillStyle='#600606';c.fillRect(-6,1,5,1);
+    c.fillStyle='#AA1010';c.fillRect(-1,-2,4,3);c.fillRect(3,-2,3,3);
+    c.fillStyle='#CC2020';c.fillRect(6,-2,2,2);
+    c.fillStyle='#600';c.fillRect(5,-3,1,1);c.fillRect(6,-4,1,1);c.fillRect(5,2,1,1);c.fillRect(6,3,1,1);
+    c.fillStyle='#500';
+    const lp=Math.sin(en.legAnim)*.7|0;
+    [[-4,1+lp],[-2,2-lp],[1,1+lp],[-4,-2-lp],[-2,-3+lp],[1,-2-lp]].forEach(([lx,ly])=>c.fillRect(lx,ly,1,2));
+  }
+  // HP pips
+  for(let i=0;i<en.hp;i++){c.fillStyle='#F00';c.fillRect(-3+i*5,-(en.type==='beetle'?6:5),3,2);}
+  c.restore();
+}
+
+// ── Pixel art sprites ─────────────────────────────────────────
+function drawAnt(c,ax,ay,facing,legAnim,color,carry){
+  c.save();c.translate(ax,ay);if(facing<0)c.scale(-1,1);
+  const [r,g,b]=color||[90,55,20];
+  const col=`rgb(${r},${g},${b})`;
+  const dk=`rgb(${Math.floor(r*.5)},${Math.floor(g*.5)},${Math.floor(b*.5)})`;
+  const hi=`rgb(${Math.min(255,r+50)},${Math.min(255,g+50)},${Math.min(255,b+50)})`;
+  const lp=Math.sin(legAnim)*.8|0;
+  // Legs (3 pairs)
+  c.fillStyle=dk;
+  [[-4,1+lp],[-2,2-lp],[1,1+lp],[-4,-2-lp],[-2,-3+lp],[1,-2-lp]].forEach(([lx,ly])=>{c.fillRect(lx,ly,1,2);});
+  // Abdomen
+  c.fillStyle=col;c.fillRect(-8,-2,6,4);
+  c.fillStyle=dk;c.fillRect(-8,1,6,1);c.fillStyle=hi;c.fillRect(-7,-2,2,1);
+  // Waist
+  c.fillStyle=dk;c.fillRect(-2,-1,2,2);
+  // Thorax
+  c.fillStyle=col;c.fillRect(0,-2,4,4);c.fillStyle=dk;c.fillRect(0,2,4,1);c.fillStyle=hi;c.fillRect(1,-2,1,1);
+  // Head
+  c.fillStyle=col;c.fillRect(4,-2,3,3);
+  c.fillStyle='#000';c.fillRect(6,-1,1,1);c.fillStyle=hi;c.fillRect(5,-2,1,1);
+  // Antennae
+  c.fillStyle=dk;c.fillRect(6,-3,1,1);c.fillRect(7,-4,1,1);c.fillRect(6,2,1,1);c.fillRect(7,3,1,1);
+  // Food
+  if(carry){c.fillStyle='#60CC20';c.fillRect(-10,-3,3,2);c.fillStyle='#90EE40';c.fillRect(-9,-3,1,1);}
+  c.restore();
+}
+
+function drawQueen(c,qx,qy,anim){
+  c.save();c.translate(qx,qy);
+  // Big abdomen (striped)
+  c.fillStyle='#C08010';c.fillRect(-12,-3,10,6);
+  c.fillStyle='#F0A820';c.fillRect(-11,-3,2,6);c.fillRect(-7,-3,2,6);
+  c.fillStyle='#A06008';c.fillRect(-12,2,10,1);
+  // Thorax
+  c.fillStyle='#D4A017';c.fillRect(-2,-3,5,5);c.fillStyle='#E8B830';c.fillRect(-1,-3,1,2);
+  // Head
+  c.fillStyle='#E8B820';c.fillRect(3,-3,4,4);
+  c.fillStyle='#000';c.fillRect(5,-2,1,1);c.fillStyle='#FFF';c.fillRect(6,-2,1,1);
+  // Crown
+  c.fillStyle='#FFE040';
+  c.fillRect(2,-5,6,2);c.fillRect(2,-6,1,1);c.fillRect(4,-7,1,1);c.fillRect(7,-6,1,1);
+  c.fillStyle='#FF4444';c.fillRect(2,-6,1,1);
+  c.fillStyle='#4488FF';c.fillRect(4,-7,1,1);
+  c.fillStyle='#44FF88';c.fillRect(7,-6,1,1);
+  // Antennae
+  c.fillStyle='#A07010';c.fillRect(6,-4,1,1);c.fillRect(7,-5,1,1);c.fillRect(6,2,1,1);c.fillRect(7,3,1,1);
+  // Legs
+  c.fillStyle='#8A6008';
+  [[-8,3],[-4,3],[0,3],[-8,-4],[-4,-4],[0,-4]].forEach(([lx,ly])=>c.fillRect(lx,ly,1,2));
+  // Animated crown glow
+  const glow=Math.sin(anim*2)*.3+.7;
+  c.fillStyle=`rgba(255,220,0,${glow*.15})`;c.fillRect(-3,-4,10,2);
+  c.restore();
+}
+
+// ── Render world ──────────────────────────────────────────────
+let sparkles=[],grassSeeds=null;
+function initGrass(){
+  grassSeeds=[];
+  for(let gx=1;gx<VW;gx+=2){
+    grassSeeds.push({x:gx,h:1+Math.floor(Math.sin(gx*1.3+Math.cos(gx*.7))*1.5+1.5),s:Math.random()});
+  }
+}
+
+function renderWorld(ts){
+  const c=vctx;
+  c.clearRect(0,0,VW,VH);
+  const layer=S.layer;
+
+  // ── Sky ──────────────────────────────────────────────────────
+  c.fillStyle='rgba(135,206,235,0.70)';c.fillRect(0,0,VW,SURFACE_Y);
+  // Faint sky gradient strip
+  c.fillStyle='rgba(200,230,255,0.35)';c.fillRect(0,0,VW,SURFACE_Y/2);
+  // Clouds
+  c.fillStyle='rgba(255,255,255,0.65)';
+  [[15,8,18,5],[70,5,22,6],[108,10,14,5]].forEach(([cx,cy,w,h])=>{
+    c.fillRect(cx,cy,w,h);c.fillRect(cx-2,cy+2,w+4,h);
+  });
+
+  // ── Underground soil ────────────────────────────────────────
+  let bgCol='rgba(72,44,18,0.82)',soilDot='rgba(45,28,10,0.6)';
+  if(layer>=2&&S.research.crystalEx){bgCol='rgba(32,18,56,0.88)';soilDot='rgba(22,12,40,0.65)';}
+  else if(layer>=1&&S.research.deepMine){bgCol='rgba(100,50,14,0.84)';soilDot='rgba(68,34,8,0.62)';}
+  c.fillStyle=bgCol;c.fillRect(0,SURFACE_Y,VW,VH-SURFACE_Y-20);
+
+  // Soil texture dots
+  c.fillStyle=soilDot;
+  for(let tx=4;tx<VW;tx+=6)for(let ty=SURFACE_Y+4;ty<VH-22;ty+=5)c.fillRect(tx,ty,1,1);
+
+  // Layer zone bands
+  if(layer>=1&&S.research.deepMine){
+    c.fillStyle='rgba(140,70,20,0.12)';c.fillRect(0,SURFACE_Y+50,VW,45);
+    c.fillStyle='rgba(160,80,0,0.08)';c.fillRect(0,SURFACE_Y+50,VW,2);
+  }
+  if(layer>=2&&S.research.crystalEx){
+    c.fillStyle='rgba(80,40,140,0.15)';c.fillRect(0,SURFACE_Y+95,VW,VH-SURFACE_Y-95-20);
+    c.fillStyle='rgba(100,60,200,0.10)';c.fillRect(0,SURFACE_Y+95,VW,2);
+    // Crystal formations
+    c.fillStyle='rgba(100,60,200,0.5)';
+    [[14,SURFACE_Y+108],[30,SURFACE_Y+120],[55,SURFACE_Y+115],[90,SURFACE_Y+118],[115,SURFACE_Y+112]].forEach(([cx,cy])=>{
+      c.fillRect(cx,cy-5,2,6);c.fillRect(cx+2,cy-3,2,4);c.fillRect(cx-2,cy-4,2,5);
+    });
+    // Sparkles
+    if(Math.random()<0.06)sparkles.push({x:Math.random()*(VW-20)+5,y:SURFACE_Y+100+Math.random()*(VH-SURFACE_Y-120),t:0.7});
+    sparkles=sparkles.filter(s=>{
+      s.t-=0.016;
+      c.fillStyle=`rgba(180,140,255,${s.t/0.7})`;
+      c.fillRect(s.x-1,s.y,3,1);c.fillRect(s.x,s.y-1,1,3);
+      return s.t>0;
+    });
+  }
+
+  // ── Tunnels ──────────────────────────────────────────────────
+  edges.forEach(([a,b])=>{
+    const na=nodes[a],nb=nodes[b];
+    const avgY=(na.y+nb.y)/2;
+    const tcol=avgY>SURFACE_Y+95&&layer>=2?'rgba(55,35,90,0.9)':
+               avgY>SURFACE_Y+48&&layer>=1?'rgba(90,48,12,0.9)':'rgba(105,65,25,0.9)';
+    const dx=nb.x-na.x,dy=nb.y-na.y,d=Math.sqrt(dx*dx+dy*dy);
+    const steps=Math.ceil(d/1.5);
+    for(let i=0;i<=steps;i++){
+      const t=i/steps,tx=na.x+dx*t,ty=na.y+dy*t;
+      c.fillStyle=tcol;c.fillRect(tx-2,ty-2,5,5);
+    }
+  });
+
+  // Deep resource icons on nodes
+  nodes.forEach(n=>{
+    if(n.y>SURFACE_Y+95){
+      // Crystal (blue diamond)
+      c.fillStyle='rgba(100,160,255,0.9)';c.fillRect(n.x,n.y-4,1,3);c.fillRect(n.x-1,n.y-3,3,1);
+    }else if(n.y>SURFACE_Y+48){
+      // Clay (orange dot)
+      c.fillStyle='rgba(255,140,40,0.85)';c.fillRect(n.x-1,n.y-3,3,2);
+    }
+  });
+
+  // ── Queen chamber ────────────────────────────────────────────
+  const qn=nodes[QUEEN_NODE];
+  const cx=qn.x,cy=qn.y;
+  // Chamber floor (bottom strip)
+  c.fillStyle='rgba(30,15,5,0.9)';c.fillRect(0,VH-20,VW,20);
+  // Chamber room
+  const cw=44,ch=18;
+  c.fillStyle='rgba(20,10,3,0.96)';c.fillRect(cx-cw/2-2,cy-ch/2-2,cw+4,ch+4);
+  c.fillStyle='rgba(38,22,8,0.98)';c.fillRect(cx-cw/2,cy-ch/2,cw,ch);
+  // Chamber floor
+  c.fillStyle='rgba(55,32,12,0.9)';c.fillRect(cx-cw/2,cy+ch/2-3,cw,3);
+  // Chamber ceiling
+  c.fillStyle='rgba(18,10,3,0.9)';c.fillRect(cx-cw/2,cy-ch/2,cw,2);
+  // Eggs around queen
+  c.fillStyle='rgba(255,240,200,0.75)';
+  for(let i=0;i<6;i++)c.fillRect(cx-14+i*5,cy+4,2,3);
+  for(let i=0;i<5;i++)c.fillRect(cx-11+i*5,cy+6,2,2);
+  // Queen label dots (chamber indicator)
+  c.fillStyle='rgba(248,204,24,0.3)';c.fillRect(cx-cw/2,cy-ch/2,cw,1);
+
+  // Draw queen
+  drawQueen(c,cx,cy-2,ts/800);
+
+  // ── Grass & surface ──────────────────────────────────────────
+  // Dirt band
+  c.fillStyle='rgba(80,50,20,0.90)';c.fillRect(0,SURFACE_Y,VW,6);
+  c.fillStyle='rgba(60,36,12,0.7)';c.fillRect(0,SURFACE_Y+6,VW,3);
+  // Rocks
+  c.fillStyle='rgba(110,90,70,0.85)';
+  [[12,SURFACE_Y-4,4,3],[52,SURFACE_Y-3,3,2],[95,SURFACE_Y-4,5,3],[120,SURFACE_Y-3,3,2]].forEach(([rx,ry,rw,rh])=>{
+    c.fillRect(rx,ry,rw,rh);c.fillStyle='rgba(140,115,85,0.6)';c.fillRect(rx,ry,rw,1);c.fillStyle='rgba(110,90,70,0.85)';
+  });
+  // Grass blades
+  if(!grassSeeds)initGrass();
+  grassSeeds.forEach(gs=>{
+    const wave=Math.sin(ts/900+gs.x*.18)*.5;
+    c.fillStyle='rgba(40,110,25,0.88)';
+    c.fillRect(gs.x+wave,SURFACE_Y-gs.h-2,1,gs.h);
+    c.fillStyle='rgba(65,155,35,0.75)';
+    c.fillRect(gs.x+wave,SURFACE_Y-gs.h-2,1,1);
+  });
+  // Extra short grass fringe
+  c.fillStyle='rgba(45,125,28,0.65)';
+  for(let gx=3;gx<VW;gx+=4)c.fillRect(gx,SURFACE_Y-1,1,2);
+
+  // Aphid farm visual
+  if(aphidTimer>0){
+    c.fillStyle='rgba(160,230,80,0.5)';c.fillRect(VW/2-10,SURFACE_Y-14,20,10);
+    c.fillStyle='rgba(100,200,50,0.7)';c.fillRect(VW/2-6,SURFACE_Y-12,12,7);
+    c.fillStyle='#FFF';c.fillRect(VW/2-3,SURFACE_Y-10,6,3);
+  }
+
+  // ── Food spots ───────────────────────────────────────────────
+  const sm=1+(S.upg.sniffer||0)*0.12;
+  if(Math.random()<0.018*sm)spawnFood();
+  foodSpots.forEach(f=>{
+    const ft=f.type||FOOD_TYPES[0];
+    c.fillStyle=ft.col;
+    if(ft.id==='leaf'){
+      c.fillRect(f.x-2,f.y-2,5,3);c.fillRect(f.x-1,f.y-3,3,1);
+      c.fillStyle=ft.hl;c.fillRect(f.x-1,f.y-2,1,1);
+      c.fillStyle='#185010';c.fillRect(f.x,f.y+1,1,2);
+    }else if(ft.id==='berry'){
+      c.fillRect(f.x-1,f.y-2,3,3);c.fillStyle=ft.hl;c.fillRect(f.x,f.y-2,1,1);
+      c.fillStyle='#183A10';c.fillRect(f.x,f.y-3,1,1);
+    }else if(ft.id==='sugar'){
+      c.fillRect(f.x-1,f.y-3,3,4);c.fillStyle=ft.hl;c.fillRect(f.x,f.y-3,1,1);c.fillRect(f.x-1,f.y-1,1,1);
+      c.fillStyle='rgba(255,255,255,0.6)';c.fillRect(f.x,f.y-2,1,1);
+    }else if(ft.id==='diamond'){
+      c.fillRect(f.x,f.y-4,2,2);c.fillRect(f.x-1,f.y-2,4,2);c.fillRect(f.x,f.y,2,1);
+      c.fillStyle=ft.hl;c.fillRect(f.x,f.y-4,1,1);
+      c.fillStyle='rgba(255,255,255,0.5)';c.fillRect(f.x+1,f.y-3,1,2);
+    }else if(ft.id==='poison'){
+      // Purple mushroom
+      c.fillRect(f.x-2,f.y-3,5,2);c.fillRect(f.x-1,f.y-1,3,3);
+      c.fillStyle=ft.hl;c.fillRect(f.x-1,f.y-3,1,1);c.fillRect(f.x+1,f.y-3,1,1);
+      c.fillStyle='rgba(255,255,255,0.5)';c.fillRect(f.x,f.y-2,1,1);
+    }else if(ft.id==='rot'){
+      // Brown lumpy rot blob
+      c.fillRect(f.x-2,f.y-2,5,3);c.fillRect(f.x-1,f.y-3,3,1);
+      c.fillStyle=ft.hl;c.fillRect(f.x,f.y-3,1,1);c.fillRect(f.x-2,f.y-1,1,1);
+      c.fillStyle='rgba(0,0,0,0.4)';c.fillRect(f.x+1,f.y,1,1);c.fillRect(f.x-1,f.y-1,1,1);
+    }else if(ft.id==='trap'){
+      // Amber sticky droplet / web
+      c.fillRect(f.x-1,f.y-3,3,4);c.fillRect(f.x-2,f.y-1,5,2);
+      c.fillStyle=ft.hl;c.fillRect(f.x,f.y-3,1,1);
+      c.fillStyle='rgba(255,255,255,0.4)';c.fillRect(f.x-1,f.y-2,1,2);
+      // Web lines
+      c.fillStyle='rgba(200,140,0,0.6)';c.fillRect(f.x-3,f.y-1,1,1);c.fillRect(f.x+3,f.y-1,1,1);c.fillRect(f.x,f.y+2,1,1);
+    }else if(ft.id==='wasp'){
+      // Yellow-black striped nest bump
+      c.fillStyle='#F0D000';c.fillRect(f.x-2,f.y-2,5,4);
+      c.fillStyle='#000';c.fillRect(f.x-2,f.y-1,1,3);c.fillRect(f.x,f.y-1,1,3);c.fillRect(f.x+2,f.y-1,1,3);
+      c.fillStyle=ft.hl;c.fillRect(f.x-1,f.y-2,1,1);
+    }else if(ft.id==='bait'){
+      // Dark red square with X
+      c.fillRect(f.x-2,f.y-3,5,5);c.fillStyle=ft.hl;c.fillRect(f.x-1,f.y-2,1,1);c.fillRect(f.x+1,f.y-2,1,1);
+      c.fillStyle='rgba(0,0,0,0.5)';c.fillRect(f.x-1,f.y,1,1);c.fillRect(f.x+1,f.y,1,1);c.fillRect(f.x,f.y-1,1,1);
+    }else if(ft.id==='acid'){
+      // Bright green bubbling drop
+      c.fillRect(f.x-1,f.y-3,3,4);c.fillRect(f.x-2,f.y-1,5,2);
+      c.fillStyle=ft.hl;c.fillRect(f.x,f.y-3,1,1);c.fillRect(f.x-1,f.y-1,1,1);
+      c.fillStyle='rgba(255,255,255,0.6)';c.fillRect(f.x+1,f.y-2,1,1);
+      // Bubbles
+      c.fillStyle='rgba(120,255,60,0.8)';c.fillRect(f.x-2,f.y-3,1,1);c.fillRect(f.x+2,f.y-2,1,1);
+    }else if(ft.id==='freeze'){
+      // Light blue ice shard (pointy)
+      c.fillRect(f.x,f.y-4,2,5);c.fillRect(f.x-1,f.y-2,4,3);
+      c.fillStyle=ft.hl;c.fillRect(f.x,f.y-4,1,1);c.fillRect(f.x-1,f.y-2,1,1);
+      c.fillStyle='rgba(200,240,255,0.5)';c.fillRect(f.x+1,f.y-3,1,3);
+    }
+  });
+
+  // ── Enemies ──────────────────────────────────────────────────
+  enemies.filter(e=>!e.dead).forEach(en=>drawEnemy(c,en));
+
+  // ── Ants ─────────────────────────────────────────────────────
+  ants.forEach(a=>{
+    const ti=ANT_TYPES.find(t=>t.id===a.type);
+    // Flash red if poisoned
+    const col=(poisonTimer>0&&Math.sin(Date.now()/80)>0)?[200,50,50]:(ti?ti.color:[90,55,20]);
+    drawAnt(c,a.x,a.y,a.facing,a.legAnim,col,a.carry>0);
+    if(a.type!=='worker'&&ti){
+      const[r,g,b]=ti.color;c.fillStyle=`rgb(${r},${g},${b})`;
+      c.fillRect(a.x-1,a.y-7,2,2);
+    }
+    // Fight flash
+    if(a.fighting){c.fillStyle='rgba(255,80,0,0.7)';c.fillRect(a.x-3,a.y-3,6,6);}
+    // Frozen flash
+    if(a.frozenTimer>0){c.fillStyle='rgba(120,200,255,0.55)';c.fillRect(a.x-4,a.y-4,8,8);}
+  });
+}
+
+// ── HUD ───────────────────────────────────────────────────────
+let fullscreen=false;
+function renderHUD(){
+  const c=vctx;
+  // Top bar
+  c.fillStyle='rgba(0,0,0,0.62)';c.fillRect(0,0,VW,11);
+  // Food bar
+  const hc=getHatchCost();
+  c.fillStyle='rgba(248,216,32,0.9)';c.fillRect(0,0,Math.min(VW,VW*(S.food%(hc*20))/(hc*20)),2);
+
+  // Colony name
+  const title=COLONY_TITLES[Math.min(COLONY_TITLES.length-1,S.prestige)];
+  const fs=S.food>=10000?`${(S.food/1000).toFixed(1)}k`:S.food>=1000?`${(S.food/1000).toFixed(1)}k`:Math.floor(S.food).toString();
+
+  c.fillStyle='#F8CC18';c.fillRect(2,3,1,7);c.fillRect(4,3,1,7);
+  c.fillStyle='#E8B820';
+  // Mini text (we draw it as colored rect run)
+  let tx=6,ty=3;
+  for(const ch of (title.substring(0,8).toUpperCase())){const g=FONT[ch];if(!g){tx+=3;continue;}g.forEach((row,ry)=>row.forEach((px,rx)=>{if(px){c.fillStyle='#F8CC18';c.fillRect(tx+rx,ty+ry,1,1);}}));tx+=g[0].length+1;}
+  tx=6;ty=8;
+  const info=`${fs}F ${S.royalJelly}RJ ${S.antCount}/${getAntMax()}A`;
+  for(const ch of info){const g=FONT[ch];if(!g){tx+=3;continue;}g.forEach((row,ry)=>row.forEach((px,rx)=>{if(px){c.fillStyle='#C8A868';c.fillRect(tx+rx,ty+ry,1,1);}}));tx+=g[0].length+1;}
+
+  // Fullscreen btn
+  c.fillStyle='rgba(0,0,0,0.55)';c.fillRect(VW-10,1,9,9);
+  c.fillStyle='#90B0FF';
+  if(fullscreen){c.fillRect(VW-9,2,3,3);c.fillRect(VW-4,6,3,3);}
+  else{c.fillRect(VW-9,2,7,7);c.fillStyle='rgba(0,0,0,0.55)';c.fillRect(VW-8,3,5,5);}
+
+  // Migrate hint
+  if(S.totalFood>=5000){
+    c.fillStyle='rgba(248,204,24,0.92)';c.fillRect(VW/2-16,SURFACE_Y-13,32,9);
+    c.fillStyle='#1A0800';c.fillRect(VW/2-14,SURFACE_Y-11,29,1);
+    const mg='MIGRATE';let mx=VW/2-12,my=SURFACE_Y-11;
+    for(const ch of mg){const g=FONT[ch];if(!g){mx+=3;continue;}g.forEach((row,ry)=>row.forEach((px,rx)=>{if(px){c.fillStyle='#1A0800';c.fillRect(mx+rx,my+ry,1,1);}}));mx+=g[0].length+1;}
+  }
+
+  // Mult indicator
+  if(S.mult>1){
+    c.fillStyle='rgba(0,0,0,0.5)';c.fillRect(0,VH-8,40,8);
+    let mx2=2,my2=VH-6;const mstr=`x${S.mult}!`;
+    for(const ch of mstr){const g=FONT[ch];if(!g){mx2+=3;continue;}g.forEach((row,ry)=>row.forEach((px,rx)=>{if(px){c.fillStyle='#F8CC18';c.fillRect(mx2+rx,my2+ry,1,1);}}));mx2+=g[0].length+1;}
+  }
+  if(S.rainTimer>0){
+    c.fillStyle='rgba(100,140,255,0.6)';c.fillRect(VW-24,VH-8,24,8);
+    let rx=VW-22,ry=VH-6;const rs='RAIN';
+    for(const ch of rs){const g=FONT[ch];if(!g){rx+=3;continue;}g.forEach((row,ry2)=>row.forEach((px,cx)=>{if(px){c.fillStyle='#8ABAFF';c.fillRect(rx+cx,ry+ry2,1,1);}}));rx+=g[0].length+1;}
+  }
+}
+
+// ── Tiny pixel font (3×5) ─────────────────────────────────────
+const FONT={
+  'A':[[0,1,0],[1,0,1],[1,1,1],[1,0,1],[1,0,1]],
+  'B':[[1,1,0],[1,0,1],[1,1,0],[1,0,1],[1,1,0]],
+  'C':[[0,1,1],[1,0,0],[1,0,0],[1,0,0],[0,1,1]],
+  'D':[[1,1,0],[1,0,1],[1,0,1],[1,0,1],[1,1,0]],
+  'E':[[1,1,1],[1,0,0],[1,1,0],[1,0,0],[1,1,1]],
+  'F':[[1,1,1],[1,0,0],[1,1,0],[1,0,0],[1,0,0]],
+  'G':[[0,1,1],[1,0,0],[1,0,1],[1,0,1],[0,1,1]],
+  'H':[[1,0,1],[1,0,1],[1,1,1],[1,0,1],[1,0,1]],
+  'I':[[1,1,1],[0,1,0],[0,1,0],[0,1,0],[1,1,1]],
+  'J':[[0,0,1],[0,0,1],[0,0,1],[1,0,1],[0,1,0]],
+  'K':[[1,0,1],[1,1,0],[1,0,0],[1,1,0],[1,0,1]],
+  'L':[[1,0,0],[1,0,0],[1,0,0],[1,0,0],[1,1,1]],
+  'M':[[1,0,1],[1,1,1],[1,0,1],[1,0,1],[1,0,1]],
+  'N':[[1,0,1],[1,1,1],[1,1,1],[1,0,1],[1,0,1]],
+  'O':[[0,1,0],[1,0,1],[1,0,1],[1,0,1],[0,1,0]],
+  'P':[[1,1,0],[1,0,1],[1,1,0],[1,0,0],[1,0,0]],
+  'Q':[[0,1,0],[1,0,1],[1,0,1],[1,1,1],[0,1,1]],
+  'R':[[1,1,0],[1,0,1],[1,1,0],[1,1,0],[1,0,1]],
+  'S':[[0,1,1],[1,0,0],[0,1,0],[0,0,1],[1,1,0]],
+  'T':[[1,1,1],[0,1,0],[0,1,0],[0,1,0],[0,1,0]],
+  'U':[[1,0,1],[1,0,1],[1,0,1],[1,0,1],[0,1,1]],
+  'V':[[1,0,1],[1,0,1],[1,0,1],[0,1,0],[0,1,0]],
+  'W':[[1,0,1],[1,0,1],[1,1,1],[1,1,1],[1,0,1]],
+  'X':[[1,0,1],[1,0,1],[0,1,0],[1,0,1],[1,0,1]],
+  'Y':[[1,0,1],[1,0,1],[0,1,0],[0,1,0],[0,1,0]],
+  'Z':[[1,1,1],[0,0,1],[0,1,0],[1,0,0],[1,1,1]],
+  '0':[[0,1,0],[1,0,1],[1,0,1],[1,0,1],[0,1,0]],
+  '1':[[0,1,0],[1,1,0],[0,1,0],[0,1,0],[1,1,1]],
+  '2':[[1,1,0],[0,0,1],[0,1,0],[1,0,0],[1,1,1]],
+  '3':[[1,1,0],[0,0,1],[0,1,0],[0,0,1],[1,1,0]],
+  '4':[[1,0,1],[1,0,1],[1,1,1],[0,0,1],[0,0,1]],
+  '5':[[1,1,1],[1,0,0],[1,1,0],[0,0,1],[1,1,0]],
+  '6':[[0,1,1],[1,0,0],[1,1,0],[1,0,1],[0,1,0]],
+  '7':[[1,1,1],[0,0,1],[0,1,0],[1,0,0],[1,0,0]],
+  '8':[[0,1,0],[1,0,1],[0,1,0],[1,0,1],[0,1,0]],
+  '9':[[0,1,0],[1,0,1],[0,1,1],[0,0,1],[0,1,0]],
+  '/':[[0,0,1],[0,0,1],[0,1,0],[1,0,0],[1,0,0]],
+  '.':[[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,1,0]],
+  'k':[[1,0,1],[1,1,0],[1,0,0],[1,1,0],[1,0,1]],
+  ' ':[[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]],
+  'x':[[0,0,0],[1,0,1],[0,1,0],[1,0,1],[0,0,0]],
+  '!':[[0,1,0],[0,1,0],[0,1,0],[0,0,0],[0,1,0]],
+  '+':[[0,1,0],[0,1,0],[1,1,1],[0,1,0],[0,1,0]],
+  '-':[[0,0,0],[0,0,0],[1,1,1],[0,0,0],[0,0,0]],
+};
+
+// ── Shop UI ───────────────────────────────────────────────────
+let currentTab='upgrades';
+window.setTab=function(tab){
+  currentTab=tab;
+  document.querySelectorAll('.tab-btn').forEach((b,i)=>{
+    b.classList.toggle('active',['upgrades','ants','research'][i]===tab);
+  });
+  updateShopUI();
+};
+function updateShopUI(){
+  const el=document.getElementById('tab-content');
+  document.getElementById('shop-food').textContent=`🍎 ${Math.floor(S.food)} food`;
+  document.getElementById('shop-rj').textContent=`💜 ${S.royalJelly} RJ`;
+  if(currentTab==='upgrades')el.innerHTML=buildUpgTab();
+  else if(currentTab==='ants')el.innerHTML=buildAntTab();
+  else el.innerHTML=buildResTab();
+}
+function buildUpgTab(){
+  let h='<div class="upg-grid">';
+  UPGRADES.forEach(u=>{
+    const lv=S.upg[u.id]||0,ml=u.costs.length,mx=lv>=ml;
+    const cost=mx?0:u.costs[lv],ok=S.food>=cost;
+    h+=`<button class="${mx?'upg-btn maxed':ok?'upg-btn':'upg-btn locked'}" onclick="buyUpg('${u.id}')">
+      <span class="upg-icon">${u.icon}</span><span class="upg-name">${u.name}</span>
+      <span class="upg-desc">Lv${lv}/${ml}</span>
+      <span class="upg-cost">${mx?'MAXED':cost+'🍎'}</span>
+    </button>`;
+  });
+  h+='</div>';
+  const tc=Math.floor(80+nodes.length*9);
+  h+=`<div style="margin-top:5px"><button class="${S.food>=tc?'res-btn':'res-btn locked'}" style="width:100%;height:32px" onclick="buyTunnel()">
+    <span class="btn-icon">⛏️</span>
+    <span class="btn-label"><span class="btn-name">DIG TUNNEL</span><span class="btn-cost">${tc}🍎</span></span>
+  </button></div>`;
+  return h;
+}
+function buildAntTab(){
+  let h='<div class="ant-grid">';
+  ANT_TYPES.forEach(t=>{
+    const ow=S.antTypes[t.id]||0,mx=ow>=t.max,ok=S.food>=t.cost;
+    h+=`<button class="${mx?'ant-btn locked':ok?'ant-btn':'ant-btn locked'}" onclick="buyAnt('${t.id}')">
+      <span class="btn-icon">${t.icon}</span>
+      <span class="btn-label"><span class="btn-name">${t.name} (${ow}/${t.max})</span>
+      <span class="btn-desc">${t.desc}</span>
+      <span class="btn-cost">${mx?'MAXED':t.cost+'🍎'}</span></span>
+    </button>`;
+  });
+  return h+'</div>';
+}
+function buildResTab(){
+  let h='<div class="res-grid">';
+  RESEARCH.forEach(r=>{
+    const done=S.research[r.id];
+    const plk=r.prestige&&S.prestige<r.prestige;
+    const ok=S.royalJelly>=r.cost&&!plk;
+    const cls=done?'res-btn done':plk?'res-btn locked':ok?'res-btn':'res-btn locked';
+    const ct=done?'DONE':plk?`Prestige ${r.prestige}+`:r.cost+'💜';
+    h+=`<button class="${cls}" onclick="buyRes('${r.id}')">
+      <span class="btn-icon">${r.icon}</span>
+      <span class="btn-label"><span class="btn-name">${r.name}</span>
+      <span class="btn-desc">${r.desc}</span>
+      <span class="btn-cost">${ct}</span></span>
+    </button>`;
+  });
+  return h+'</div>';
+}
+
+window.buyUpg=function(id){
+  const u=UPGRADES.find(x=>x.id===id);if(!u)return;
+  const lv=S.upg[id]||0;if(lv>=u.costs.length)return;
+  const cost=u.costs[lv];if(S.food<cost)return;
+  S.food-=cost;S.upg[id]=lv+1;showToast(`${u.name} Lv${lv+1}!`);updateShopUI();
+};
+window.buyTunnel=function(){
+  const tc=Math.floor(80+nodes.length*9);if(S.food<tc)return;
+  S.food-=tc;addTunnel();showToast('Tunnel dug! ⛏️');updateShopUI();
+};
+window.buyAnt=function(id){
+  const t=ANT_TYPES.find(x=>x.id===id);if(!t)return;
+  const ow=S.antTypes[id]||0;if(ow>=t.max||S.food<t.cost)return;
+  S.food-=t.cost;S.antTypes[id]=ow+1;
+  S.antCount=Math.min(getAntMax()+12,S.antCount+1);
+  ants.push(new Ant(id));showToast(`${t.name} ant added!`);updateShopUI();
+};
+window.buyRes=function(id){
+  const r=RESEARCH.find(x=>x.id===id);if(!r)return;
+  if(S.research[id])return;
+  if(r.prestige&&S.prestige<r.prestige)return;
+  if(S.royalJelly<r.cost)return;
+  S.royalJelly-=r.cost;S.research[id]=true;
+  if(id==='crystalEx')S.layer=2;
+  else if(id==='deepMine'&&S.layer<1)S.layer=1;
+  showToast(`${r.name} unlocked! 🔬`);updateShopUI();
+};
+
+// ── Prestige ──────────────────────────────────────────────────
+window.doPrestige=function(){
+  const keepFood=S.research.memory?Math.floor(S.food*.25):0;
+  const pp=S.prestige,pr=Object.assign({},S.research),pat=Object.assign({},S.antTypes);
+  const rj=S.royalJelly,pm=S.permMult*1.5;
+  S=defState();
+  S.food=keepFood;S.prestige=pp+1;S.research=pr;S.antTypes=pat;
+  S.royalJelly=rj;S.permMult=pm;
+  S.layer=S.research.crystalEx?2:S.research.deepMine?1:0;
+  prestigeShown=false;ants=[];syncAnts();
+  document.getElementById('prestige-overlay').classList.remove('show');
+  showToast(`Migrated! ×${pm.toFixed(1)} bonus!`);updateShopUI();
+};
+window.hidePrestige=function(){document.getElementById('prestige-overlay').classList.remove('show');};
+
+// ── Events ────────────────────────────────────────────────────
+let activeEvent=null;
+function triggerEvent(){
+  const e=EVENTS[Math.floor(Math.random()*EVENTS.length)];
+  activeEvent=e;
+  const ov=document.getElementById('evt-overlay');
+  ov.className='show '+(e.type==='good'?'good':'bad');
+  document.getElementById('evt-icon').textContent=e.icon;
+  document.getElementById('evt-name').textContent=e.name;
+  document.getElementById('evt-desc').textContent=e.desc;
+  document.getElementById('evt-fill').style.width='100%';
+  e.fn();
+  setTimeout(()=>{ov.className='';activeEvent=null;},3800);
+}
+document.getElementById('evt-box').addEventListener('click',()=>{
+  document.getElementById('evt-overlay').className='';activeEvent=null;
+});
+
+// ── Toast ─────────────────────────────────────────────────────
+let toastT=null;
+function showToast(msg){
+  const t=document.getElementById('toast');
+  t.textContent=msg;t.classList.add('show');
+  clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('show'),2400);
+}
+
+// ── Shop & fullscreen controls ────────────────────────────────
+document.getElementById('shop-btn').addEventListener('click',()=>{
+  document.getElementById('shop').classList.toggle('open');updateShopUI();
+});
+document.getElementById('shop-close').addEventListener('click',()=>{
+  document.getElementById('shop').classList.remove('open');
+});
+canvas.addEventListener('click',e=>{
+  const sx=e.clientX/SCALE,sy=e.clientY/SCALE;
+  // Fullscreen btn (top right)
+  if(sx>=VW-10&&sy<=10){
+    fullscreen=!fullscreen;
+    if(fullscreen){window.moveTo(0,0);window.resizeTo(screen.availWidth,screen.availHeight);}
+    else{window.resizeTo(270,340);window.moveTo(screen.availWidth-280,screen.availHeight-350);}
+    resizeCanvas();
+  }
+  // Migrate btn
+  if(S.totalFood>=5000){
+    const mx=VW/2-16,my2=SURFACE_Y-13;
+    if(sx>=mx&&sx<=mx+32&&sy>=my2&&sy<=my2+9)document.getElementById('prestige-overlay').classList.add('show');
+  }
+});
+
+// ── Game loop ─────────────────────────────────────────────────
+let lastTime=0;
+function gameLoop(ts){
+  requestAnimationFrame(gameLoop);
+  const dt=Math.min((ts-lastTime)/1000,0.1);lastTime=ts;
+
+  // Timers
+  if(S.multTimer>0){S.multTimer-=dt;if(S.multTimer<=0){S.mult=1;S.multTimer=0;}}
+  if(S.rainTimer>0)S.rainTimer-=dt;
+  if(droughtTimer>0)droughtTimer-=dt;
+  if(aphidTimer>0){aphidTimer-=dt;addFood(3*dt);}
+  // Poison: slow/flash ants
+  if(poisonTimer>0){
+    poisonTimer-=dt;
+    if(poisonTimer<=0){poisonTimer=0;showToast('Poison wore off!');}
+  }
+  // Enemies
+  enemySpawnTimer-=dt;
+  if(enemySpawnTimer<=0){enemySpawnTimer=Math.random()*30+25;spawnEnemy();}
+  enemies.forEach(e=>e.update(dt));
+  enemies=enemies.filter(e=>!e.dead);
+
+  // Queen hatch
+  S.queenTimer+=dt;
+  const hb=(1+(S.upg.queenBoost||0)*0.18)*(S.research.queenII?2:1);
+  if(S.queenTimer>=20/hb&&S.antCount<getAntMax()){S.antCount++;syncAnts();S.queenTimer=0;}
+
+  // Builder auto-dig
+  if(S.antTypes.builder>0){
+    S.builderTimer=(S.builderTimer||0)+dt*S.antTypes.builder;
+    if(S.builderTimer>=50){S.builderTimer=0;addTunnel();showToast('Builder dug a tunnel! ⛏️');}
+  }
+
+  // Farmer passive
+  if(S.antTypes.farmer>0)addFood(S.antTypes.farmer*0.6*dt);
+
+  // Fungal passive (per tunnel node)
+  const fl=S.upg.fungal||0;
+  if(fl>0)addFood(nodes.length*0.04*fl*dt);
+
+  // Events
+  S.eventTimer-=dt;
+  if(S.eventTimer<=0){S.eventTimer=Math.random()*15+10;if(!activeEvent)triggerEvent();}
+
+  // Ants
+  ants.forEach(a=>a.update(dt));
+
+  // Replenish food
+  if(Math.random()<0.022*dt*60)spawnFood();
+
+  // Render
+  renderWorld(ts);renderHUD();
+
+  // Blit
+  dctx.clearRect(0,0,canvas.width,canvas.height);
+  dctx.imageSmoothingEnabled=false;
+  dctx.drawImage(vc,0,0,VW,VH,0,0,Math.round(VW*SCALE),Math.round(VH*SCALE));
+
+  // Shop update
+  if(document.getElementById('shop').classList.contains('open')&&Math.floor(ts/33)%12===0)updateShopUI();
+}
+requestAnimationFrame(gameLoop);
+</script>
+</body>
+</html>
