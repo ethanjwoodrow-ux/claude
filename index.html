@@ -211,8 +211,21 @@ const EVENTS=[
    fn:()=>{S.food=Math.floor(S.food*Math.max(0.1,0.7-(S.upg.armor||0)*0.1));S.antCount=Math.max(1,S.antCount-2);syncAnts();showToast('PESTICIDE! ☠️');}},
   {id:'pollinator',icon:'🐝',name:'BEE ALLIANCE',   desc:'×2 food for 30s + 50 food!',  type:'good',
    fn:()=>{S.mult=2;S.multTimer=30;addFood(50);}},
-  {id:'earthquake',icon:'🌍',name:'EARTHSHAKE',     desc:'Tunnels collapse, -3 ants',    type:'bad',
-   fn:()=>{S.antCount=Math.max(1,S.antCount-3);syncAnts();if(edges.length>3){const ri=Math.floor(Math.random()*(edges.length-1))+1;edges.splice(ri,1);}showToast('EARTHSHAKE! 🌍');}},
+  {id:'earthquake',icon:'🌍',name:'EARTHSHAKE',     desc:'Tunnel collapse, -2 ants',    type:'bad',
+   fn:()=>{
+     S.antCount=Math.max(1,S.antCount-2);syncAnts();
+     // Only remove a leaf edge (degree-1 endpoint) — can't disconnect main graph
+     const leafEdges=edges.filter(([a,b],ei)=>{
+       const da=edges.filter(e=>e[0]===a||e[1]===a).length;
+       const db=edges.filter(e=>e[0]===b||e[1]===b).length;
+       return (da===1||db===1)&&a!==QUEEN_NODE&&b!==QUEEN_NODE;
+     });
+     if(leafEdges.length){
+       const rm=leafEdges[Math.floor(Math.random()*leafEdges.length)];
+       edges.splice(edges.indexOf(rm),1);
+     }
+     showToast('EARTHSHAKE! 🌍');
+   }},
 ];
 let droughtTimer=0,aphidTimer=0;
 
@@ -254,20 +267,39 @@ function addTunnel(){
   }
 }
 
-// ── Food spots (surface only) ─────────────────────────────────
+// ── Food types ────────────────────────────────────────────────
+const FOOD_TYPES=[
+  {id:'leaf',   col:'#2E8010',hl:'#60CC28',val:1,  w:45, name:'Leaf',    poison:false},
+  {id:'berry',  col:'#BB1818',hl:'#FF5040',val:4,  w:28, name:'Berry',   poison:false},
+  {id:'sugar',  col:'#D8E8FF',hl:'#FFFFFF',val:10, w:14, name:'Sugar',   poison:false},
+  {id:'diamond',col:'#20AAFF',hl:'#A0DDFF',val:60, w:3,  name:'Diamond', poison:false},
+  {id:'poison', col:'#7010A8',hl:'#C050FF',val:0,  w:10, name:'Poison',  poison:true},
+];
+function pickFoodType(){
+  const total=FOOD_TYPES.reduce((s,t)=>s+t.w,0);
+  let r=Math.random()*total;
+  for(const t of FOOD_TYPES){r-=t.w;if(r<=0)return t;}
+  return FOOD_TYPES[0];
+}
+
+// ── Food spots (surface only, sitting on grass) ───────────────
 const MAX_FOOD_SPOTS=14;
 let foodSpots=[];
+let poisonTimer=0;
 function spawnFood(){
   if(foodSpots.length>=(droughtTimer>0?5:MAX_FOOD_SPOTS))return;
-  foodSpots.push({x:Math.random()*(VW-16)+8,y:Math.random()*(SURFACE_Y-10)+4});
+  const type=pickFoodType();
+  // y: sits right on the grass surface (SURFACE_Y-3 to SURFACE_Y+1)
+  foodSpots.push({x:Math.random()*(VW-20)+10, y:SURFACE_Y-2+Math.floor(Math.random()*3), type});
 }
-for(let i=0;i<5;i++)spawnFood();
+for(let i=0;i<6;i++)spawnFood();
 
 // ── Helpers ───────────────────────────────────────────────────
 function getAntMax(){return 10+(S.upg.antMax||0)*5;}
 function getSpeed(){
   let sp=0.52+(S.upg.speed||0)*0.18;
   if(S.rainTimer>0)sp*=0.5;
+  if(poisonTimer>0)sp*=0.35;
   return sp*(1+(S.antTypes.scout||0)*0.06);
 }
 function getCarry(){return 1+(S.upg.carry||0);}
@@ -302,15 +334,23 @@ class Ant{
     this.state='WANDER';this.nodeIdx=QUEEN_NODE;this.targetNode=null;
     this.targetFood=null;this.carry=0;this.wanderT=Math.random()*3;
     this.facing=1;this.legAnim=Math.random()*Math.PI*2;
+    this.stuckTimer=0;this.fighting=null;
   }
   adjNodes(){
     return edges.filter(e=>e[0]===this.nodeIdx||e[1]===this.nodeIdx).map(e=>e[0]===this.nodeIdx?e[1]:e[0]);
   }
   pickNext(dir){
-    const adj=this.adjNodes();if(!adj.length)return this.nodeIdx;
+    const adj=this.adjNodes();
+    if(adj.length===0){
+      // Isolated node — teleport back to queen
+      this.x=nodes[QUEEN_NODE].x;this.y=nodes[QUEEN_NODE].y;this.nodeIdx=QUEEN_NODE;
+      this.state='WANDER';this.targetNode=null;this.targetFood=null;this.carry=0;
+      return null;
+    }
     const filtered=dir==='up'?adj.filter(i=>nodes[i].y<nodes[this.nodeIdx].y):adj.filter(i=>nodes[i].y>nodes[this.nodeIdx].y);
     const pool=filtered.length?filtered:adj;
-    return pool[Math.floor(Math.random()*pool.length)];
+    const next=pool[Math.floor(Math.random()*pool.length)];
+    return next===this.nodeIdx?pool[(pool.indexOf(next)+1)%pool.length]:next;
   }
   _move(tx,ty,spd,dt){
     const dx=tx-this.x,dy=ty-this.y,d=Math.sqrt(dx*dx+dy*dy);
@@ -320,6 +360,15 @@ class Ant{
   }
   update(dt){
     this.legAnim+=dt*10;
+    // If fighting an enemy, pause movement
+    if(this.fighting){this.stuckTimer=0;return;}
+    // Stuck watchdog: if same node for >5s while not wandering, reset
+    this.stuckTimer+=dt;
+    if(this.stuckTimer>5&&this.state!=='WANDER'){
+      this.x=nodes[QUEEN_NODE].x;this.y=nodes[QUEEN_NODE].y;this.nodeIdx=QUEEN_NODE;
+      this.state='WANDER';this.targetNode=null;this.targetFood=null;this.carry=0;this.stuckTimer=0;
+      return;
+    }
     const spd=(getSpeed()*(this.type==='scout'?1.3:1))*50;
     const qn=nodes[QUEEN_NODE];
 
@@ -339,7 +388,7 @@ class Ant{
       }
       if(this.targetNode!==null){
         const tn=nodes[this.targetNode];
-        if(this._move(tn.x,tn.y,spd,dt)){this.x=tn.x;this.y=tn.y;this.nodeIdx=this.targetNode;this.targetNode=null;}
+        if(this._move(tn.x,tn.y,spd,dt)){this.x=tn.x;this.y=tn.y;this.nodeIdx=this.targetNode;this.targetNode=null;this.stuckTimer=0;}
       }
     }
 
@@ -348,19 +397,25 @@ class Ant{
       if(!tf||!foodSpots.includes(tf)){this.state='WANDER';this.targetFood=null;return;}
       if(this.targetNode!==null){
         const tn=nodes[this.targetNode];
-        if(this._move(tn.x,tn.y,spd,dt)){this.x=tn.x;this.y=tn.y;this.nodeIdx=this.targetNode;this.targetNode=null;}
+        if(this._move(tn.x,tn.y,spd,dt)){this.x=tn.x;this.y=tn.y;this.nodeIdx=this.targetNode;this.targetNode=null;this.stuckTimer=0;}
       }else{
         const upNodes=this.adjNodes().filter(i=>nodes[i].y<nodes[this.nodeIdx].y);
         if(upNodes.length){
           this.targetNode=upNodes[Math.floor(Math.random()*upNodes.length)];
         }else{
-          // At surface exit — walk to food
+          // At surface exit — walk to food directly
           const done=this._move(tf.x,tf.y,spd,dt);
           if(done||Math.sqrt((tf.x-this.x)**2+(tf.y-this.y)**2)<2.5){
-            this.carry=getCarry()*getVentBonus(nodes[this.nodeIdx].y);
+            // Poison mushroom?
+            if(tf.poison){
+              poisonTimer=12;showToast('POISON MUSHROOM! 🍄 Ants paralysed!');
+            }else{
+              this.carry=tf.val*getCarry()*getVentBonus(nodes[this.nodeIdx].y);
+            }
             const idx=foodSpots.indexOf(tf);if(idx>=0)foodSpots.splice(idx,1);
-            this.targetFood=null;this.state='TO_QUEEN';
-            this.targetNode=this.pickNext('down');
+            this.targetFood=null;
+            if(this.carry>0){this.state='TO_QUEEN';this.targetNode=this.pickNext('down');}
+            else{this.state='WANDER';this.wanderT=1;}
           }
         }
       }
@@ -368,14 +423,13 @@ class Ant{
 
     else if(this.state==='TO_QUEEN'){
       if(this.nodeIdx===QUEEN_NODE){
-        // Deliver
         const dx=qn.x-this.x,dy=qn.y-this.y,d=Math.sqrt(dx*dx+dy*dy);
-        if(d<3){addFood(this.carry);this.carry=0;this.state='WANDER';this.wanderT=Math.random()*2+1;}
+        if(d<3){addFood(this.carry);this.carry=0;this.state='WANDER';this.wanderT=Math.random()*2+1;this.stuckTimer=0;}
         else{this._move(qn.x,qn.y,spd,dt);}
       }else{
-        if(this.targetNode===null)this.targetNode=this.pickNext('down');
+        if(this.targetNode===null){const nx=this.pickNext('down');if(nx===null)return;this.targetNode=nx;}
         const tn=nodes[this.targetNode];
-        if(this._move(tn.x,tn.y,spd,dt)){this.x=tn.x;this.y=tn.y;this.nodeIdx=this.targetNode;this.targetNode=null;}
+        if(this._move(tn.x,tn.y,spd,dt)){this.x=tn.x;this.y=tn.y;this.nodeIdx=this.targetNode;this.targetNode=null;this.stuckTimer=0;}
       }
     }
   }
@@ -383,7 +437,7 @@ class Ant{
 
 let ants=[];
 function syncAnts(){
-  while(ants.length>S.antCount)ants.pop();
+  while(ants.length>S.antCount){const a=ants.pop();if(a&&a.fighting){a.fighting.target=null;a.fighting=null;}}
   if(ants.length<S.antCount){
     const have={};ants.forEach(a=>have[a.type]=(have[a.type]||0)+1);
     const needed=[];
@@ -396,6 +450,90 @@ function syncAnts(){
   }
 }
 syncAnts();
+
+// ── Enemy system ──────────────────────────────────────────────
+class Enemy{
+  constructor(type){
+    this.type=type; // 'beetle' or 'antEnemy'
+    this.x=Math.random()<0.5?-8:VW+8;
+    this.y=SURFACE_Y-3;
+    this.hp=type==='beetle'?2:1;
+    this.speed=(type==='beetle'?14:22)*(Math.random()*0.4+0.8);
+    this.facing=this.x<0?1:-1;
+    this.dead=false;this.fightTimer=0;this.target=null;
+    this.legAnim=Math.random()*Math.PI*2;
+  }
+  update(dt){
+    if(this.dead)return;
+    this.legAnim+=dt*9;
+    // If fighting an ant, wait out the fight timer
+    if(this.target){
+      if(!ants.includes(this.target)){this.target=null;return;}
+      this.fightTimer-=dt;
+      if(this.fightTimer<=0){
+        // Kill the ant
+        const idx=ants.indexOf(this.target);
+        if(idx>=0){ants.splice(idx,1);S.antCount=Math.max(1,S.antCount-1);}
+        this.target.fighting=null;
+        this.target=null;this.hp--;
+        if(this.hp<=0){this.dead=true;showToast(this.type==='beetle'?'Beetle killed! 💥':'Enemy ant dead!');}
+      }
+      return;
+    }
+    // Walk toward center of screen (tunnel entrance area)
+    this.x+=this.speed*this.facing*dt;
+    if(this.x>VW+20||this.x<-20){this.dead=true;return;}
+    // Reverse if past center
+    if((this.facing>0&&this.x>VW*0.65)||(this.facing<0&&this.x<VW*0.35))this.facing*=-1;
+    // Find surface ants to attack
+    const freeAnts=ants.filter(a=>a.y<SURFACE_Y+8&&!a.fighting);
+    let nearest=null,nearestD=18;
+    freeAnts.forEach(a=>{const d=Math.hypot(a.x-this.x,a.y-this.y);if(d<nearestD){nearestD=d;nearest=a;}});
+    if(nearest){
+      this.target=nearest;nearest.fighting=this;
+      this.fightTimer=this.type==='beetle'?2.2:1.0;
+      showToast(this.type==='beetle'?'🪲 BEETLE ATTACK!':'🐜 ENEMY ANT!');
+    }
+  }
+}
+let enemies=[];
+let enemySpawnTimer=35;
+
+function spawnEnemy(){
+  if(enemies.filter(e=>!e.dead).length>=4)return;
+  const type=Math.random()<0.35?'beetle':'antEnemy';
+  enemies.push(new Enemy(type));
+}
+
+function drawEnemy(c,en){
+  c.save();c.translate(en.x,en.y);if(en.facing<0)c.scale(-1,1);
+  if(en.type==='beetle'){
+    // Green beetle: oval shell, legs
+    c.fillStyle='#1A6A08';c.fillRect(-5,-3,10,5);
+    c.fillStyle='#2A9A10';c.fillRect(-4,-3,8,1);c.fillRect(-5,-2,1,1);c.fillRect(4,-2,1,1);
+    c.fillStyle='#0A3A04';c.fillRect(-3,1,6,1);
+    // Shell highlight
+    c.fillStyle='rgba(100,200,60,0.5)';c.fillRect(-3,-3,3,2);
+    // Eyes
+    c.fillStyle='#FF0';c.fillRect(3,-2,2,2);c.fillStyle='#000';c.fillRect(4,-2,1,1);
+    // Legs
+    c.fillStyle='#0A3A04';
+    [[-3,2],[-1,2],[1,2],[-3,-4],[-1,-4],[1,-4]].forEach(([lx,ly])=>c.fillRect(lx,ly,1,2));
+  }else{
+    // Enemy ant (red, slightly bigger)
+    c.fillStyle='#8A0808';c.fillRect(-6,-2,5,3);
+    c.fillStyle='#600606';c.fillRect(-6,1,5,1);
+    c.fillStyle='#AA1010';c.fillRect(-1,-2,4,3);c.fillRect(3,-2,3,3);
+    c.fillStyle='#CC2020';c.fillRect(6,-2,2,2);
+    c.fillStyle='#600';c.fillRect(5,-3,1,1);c.fillRect(6,-4,1,1);c.fillRect(5,2,1,1);c.fillRect(6,3,1,1);
+    c.fillStyle='#500';
+    const lp=Math.sin(en.legAnim)*.7|0;
+    [[-4,1+lp],[-2,2-lp],[1,1+lp],[-4,-2-lp],[-2,-3+lp],[1,-2-lp]].forEach(([lx,ly])=>c.fillRect(lx,ly,1,2));
+  }
+  // HP pips
+  for(let i=0;i<en.hp;i++){c.fillStyle='#F00';c.fillRect(-3+i*5,-(en.type==='beetle'?6:5),3,2);}
+  c.restore();
+}
 
 // ── Pixel art sprites ─────────────────────────────────────────
 function drawAnt(c,ax,ay,facing,legAnim,color,carry){
@@ -591,22 +729,45 @@ function renderWorld(ts){
   const sm=1+(S.upg.sniffer||0)*0.12;
   if(Math.random()<0.018*sm)spawnFood();
   foodSpots.forEach(f=>{
-    c.fillStyle='#206A10';c.fillRect(f.x-2,f.y-1,5,4);
-    c.fillStyle='#38AA20';c.fillRect(f.x-1,f.y-1,3,3);
-    c.fillStyle='#80CC40';c.fillRect(f.x,f.y,1,1);
-    // Stem
-    c.fillStyle='#185010';c.fillRect(f.x,f.y+2,1,2);
+    const ft=f.type||FOOD_TYPES[0];
+    c.fillStyle=ft.col;
+    if(ft.id==='leaf'){
+      c.fillRect(f.x-2,f.y-2,5,3);c.fillRect(f.x-1,f.y-3,3,1);
+      c.fillStyle=ft.hl;c.fillRect(f.x-1,f.y-2,1,1);
+      c.fillStyle='#185010';c.fillRect(f.x,f.y+1,1,2);
+    }else if(ft.id==='berry'){
+      c.fillRect(f.x-1,f.y-2,3,3);c.fillStyle=ft.hl;c.fillRect(f.x,f.y-2,1,1);
+      c.fillStyle='#183A10';c.fillRect(f.x,f.y-3,1,1);
+    }else if(ft.id==='sugar'){
+      c.fillRect(f.x-1,f.y-3,3,4);c.fillStyle=ft.hl;c.fillRect(f.x,f.y-3,1,1);c.fillRect(f.x-1,f.y-1,1,1);
+      c.fillStyle='rgba(255,255,255,0.6)';c.fillRect(f.x,f.y-2,1,1);
+    }else if(ft.id==='diamond'){
+      c.fillRect(f.x,f.y-4,2,2);c.fillRect(f.x-1,f.y-2,4,2);c.fillRect(f.x,f.y,2,1);
+      c.fillStyle=ft.hl;c.fillRect(f.x,f.y-4,1,1);
+      c.fillStyle='rgba(255,255,255,0.5)';c.fillRect(f.x+1,f.y-3,1,2);
+    }else if(ft.id==='poison'){
+      // Purple mushroom
+      c.fillRect(f.x-2,f.y-3,5,2);c.fillRect(f.x-1,f.y-1,3,3);
+      c.fillStyle=ft.hl;c.fillRect(f.x-1,f.y-3,1,1);c.fillRect(f.x+1,f.y-3,1,1);
+      c.fillStyle='rgba(255,255,255,0.5)';c.fillRect(f.x,f.y-2,1,1);
+    }
   });
+
+  // ── Enemies ──────────────────────────────────────────────────
+  enemies.filter(e=>!e.dead).forEach(en=>drawEnemy(c,en));
 
   // ── Ants ─────────────────────────────────────────────────────
   ants.forEach(a=>{
     const ti=ANT_TYPES.find(t=>t.id===a.type);
-    drawAnt(c,a.x,a.y,a.facing,a.legAnim,ti?ti.color:[90,55,20],a.carry>0);
-    // Type colour dot for non-workers
+    // Flash red if poisoned
+    const col=(poisonTimer>0&&Math.sin(Date.now()/80)>0)?[200,50,50]:(ti?ti.color:[90,55,20]);
+    drawAnt(c,a.x,a.y,a.facing,a.legAnim,col,a.carry>0);
     if(a.type!=='worker'&&ti){
       const[r,g,b]=ti.color;c.fillStyle=`rgb(${r},${g},${b})`;
-      c.fillRect(a.x-1,a.y-6,2,2);
+      c.fillRect(a.x-1,a.y-7,2,2);
     }
+    // Fight flash
+    if(a.fighting){c.fillStyle='rgba(255,80,0,0.7)';c.fillRect(a.x-3,a.y-3,6,6);}
   });
 }
 
@@ -878,6 +1039,16 @@ function gameLoop(ts){
   if(S.rainTimer>0)S.rainTimer-=dt;
   if(droughtTimer>0)droughtTimer-=dt;
   if(aphidTimer>0){aphidTimer-=dt;addFood(3*dt);}
+  // Poison: slow/flash ants
+  if(poisonTimer>0){
+    poisonTimer-=dt;
+    if(poisonTimer<=0){poisonTimer=0;showToast('Poison wore off!');}
+  }
+  // Enemies
+  enemySpawnTimer-=dt;
+  if(enemySpawnTimer<=0){enemySpawnTimer=Math.random()*30+25;spawnEnemy();}
+  enemies.forEach(e=>e.update(dt));
+  enemies=enemies.filter(e=>!e.dead);
 
   // Queen hatch
   S.queenTimer+=dt;
