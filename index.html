@@ -291,9 +291,12 @@ const FOOD_TYPES=[
    effect:()=>{S.rainTimer=Math.max(S.rainTimer,25);showToast('🧊 FREEZE! Ants slow 25s!');}},
 ];
 function pickFoodType(){
-  const total=FOOD_TYPES.reduce((s,t)=>s+t.w,0);
+  // More tunnel nodes = better scouted territory = lower bad food chance
+  // Base 18 nodes: no bonus. Each extra node reduces bad food weight by 3%, cap 60%
+  const safetyRatio=Math.max(0.4,1-Math.max(0,nodes.length-18)*0.03);
+  const total=FOOD_TYPES.reduce((s,t)=>s+(t.bad?t.w*safetyRatio:t.w),0);
   let r=Math.random()*total;
-  for(const t of FOOD_TYPES){r-=t.w;if(r<=0)return t;}
+  for(const t of FOOD_TYPES){r-=(t.bad?t.w*safetyRatio:t.w);if(r<=0)return t;}
   return FOOD_TYPES[0];
 }
 
@@ -350,6 +353,9 @@ class Ant{
     this.targetFood=null;this.carry=0;this.wanderT=Math.random()*3;
     this.facing=1;this.legAnim=Math.random()*Math.PI*2;
     this.stuckTimer=0;this.fighting=null;this.frozenTimer=0;
+    this.hp=type==='soldier'?2:1; // soldiers take 2 hits
+    this.noDeliveryTimer=0;       // reset on food delivery; if >40s, teleport to queen
+    this.foodSearchTimer=0;       // reset when leaving TO_FOOD; if >12s, give up
   }
   adjNodes(){
     return edges.filter(e=>e[0]===this.nodeIdx||e[1]===this.nodeIdx).map(e=>e[0]===this.nodeIdx?e[1]:e[0]);
@@ -378,9 +384,16 @@ class Ant{
     // If fighting or frozen, pause movement
     if(this.fighting){this.stuckTimer=0;return;}
     if(this.frozenTimer>0){this.frozenTimer-=dt;return;}
-    // Stuck watchdog: if same node for >5s while not wandering, reset
+    // Global no-delivery watchdog: if ant hasn't delivered food in 40s, reset to queen
+    this.noDeliveryTimer+=dt;
+    if(this.noDeliveryTimer>40){
+      this.x=nodes[QUEEN_NODE].x;this.y=nodes[QUEEN_NODE].y;this.nodeIdx=QUEEN_NODE;
+      this.state='WANDER';this.targetNode=null;this.targetFood=null;this.carry=0;
+      this.noDeliveryTimer=0;this.foodSearchTimer=0;this.stuckTimer=0;return;
+    }
+    // Node-level stuck watchdog: if stuck at same node >6s while not wandering, reset
     this.stuckTimer+=dt;
-    if(this.stuckTimer>5&&this.state!=='WANDER'){
+    if(this.stuckTimer>6&&this.state!=='WANDER'){
       this.x=nodes[QUEEN_NODE].x;this.y=nodes[QUEEN_NODE].y;this.nodeIdx=QUEEN_NODE;
       this.state='WANDER';this.targetNode=null;this.targetFood=null;this.carry=0;this.stuckTimer=0;
       return;
@@ -410,26 +423,33 @@ class Ant{
 
     else if(this.state==='TO_FOOD'){
       const tf=this.targetFood;
-      if(!tf||!foodSpots.includes(tf)){this.state='WANDER';this.targetFood=null;return;}
+      // Give up searching after 12s (prevents getting lost in deep tunnels)
+      this.foodSearchTimer+=dt;
+      if(this.foodSearchTimer>12||!tf||!foodSpots.includes(tf)){
+        this.state='WANDER';this.targetFood=null;this.foodSearchTimer=0;this.wanderT=1;return;
+      }
       if(this.targetNode!==null){
         const tn=nodes[this.targetNode];
         if(this._move(tn.x,tn.y,spd,dt)){this.x=tn.x;this.y=tn.y;this.nodeIdx=this.targetNode;this.targetNode=null;this.stuckTimer=0;}
       }else{
-        const upNodes=this.adjNodes().filter(i=>nodes[i].y<nodes[this.nodeIdx].y);
+        const curY=nodes[this.nodeIdx].y;
+        const upNodes=this.adjNodes().filter(i=>nodes[i].y<curY);
         if(upNodes.length){
           this.targetNode=upNodes[Math.floor(Math.random()*upNodes.length)];
+        }else if(curY>SURFACE_Y+5){
+          // Not at surface but no upward path — pick any adjacent (don't confuse as surface)
+          const nx=this.pickNext('up');if(nx!==null)this.targetNode=nx;
         }else{
           // At surface exit — walk to food directly
           const done=this._move(tf.x,tf.y,spd,dt);
           if(done||Math.sqrt((tf.x-this.x)**2+(tf.y-this.y)**2)<2.5){
             if(tf.type&&tf.type.bad){
-              // Bad food — trigger effect
               if(tf.type.effect)tf.type.effect(this);
             }else{
               this.carry=(tf.type?tf.type.val:1)*getCarry()*getVentBonus(nodes[this.nodeIdx].y);
             }
             const idx=foodSpots.indexOf(tf);if(idx>=0)foodSpots.splice(idx,1);
-            this.targetFood=null;
+            this.targetFood=null;this.foodSearchTimer=0;
             if(this.carry>0){this.state='TO_QUEEN';this.targetNode=this.pickNext('down');}
             else{this.state='WANDER';this.wanderT=1.5;}
           }
@@ -440,7 +460,7 @@ class Ant{
     else if(this.state==='TO_QUEEN'){
       if(this.nodeIdx===QUEEN_NODE){
         const dx=qn.x-this.x,dy=qn.y-this.y,d=Math.sqrt(dx*dx+dy*dy);
-        if(d<3){addFood(this.carry);this.carry=0;this.state='WANDER';this.wanderT=Math.random()*2+1;this.stuckTimer=0;}
+        if(d<3){addFood(this.carry);this.carry=0;this.state='WANDER';this.wanderT=Math.random()*2+1;this.stuckTimer=0;this.noDeliveryTimer=0;}
         else{this._move(qn.x,qn.y,spd,dt);}
       }else{
         if(this.targetNode===null){const nx=this.pickNext('down');if(nx===null)return;this.targetNode=nx;}
@@ -492,12 +512,20 @@ class Enemy{
       if(!ants.includes(this.target)){this.target=null;return;}
       this.fightTimer-=dt;
       if(this.fightTimer<=0){
-        // Kill the ant
-        const idx=ants.indexOf(this.target);
-        if(idx>=0){ants.splice(idx,1);S.antCount=Math.max(1,S.antCount-1);}
-        this.target.fighting=null;
-        this.target=null;this.hp--;
-        if(this.hp<=0){this.dead=true;showToast(this.type==='beetle'?'Beetle killed! 💥':'Enemy ant dead!');}
+        const ant=this.target;
+        if(ant.hp>1){
+          // Soldier survives first hit — wounded but still fighting
+          ant.hp--;
+          this.fightTimer=this.type==='beetle'?1.8:0.8;
+          showToast('⚔️ Soldier took a hit!');
+        }else{
+          // Ant killed
+          const idx=ants.indexOf(ant);
+          if(idx>=0){ants.splice(idx,1);S.antCount=Math.max(1,S.antCount-1);}
+          ant.fighting=null;
+          this.target=null;this.hp--;
+          if(this.hp<=0){this.dead=true;showToast(this.type==='beetle'?'Beetle killed! 💥':'Enemy ant dead!');}
+        }
       }
       return;
     }
@@ -506,10 +534,12 @@ class Enemy{
     if(this.x>VW+20||this.x<-20){this.dead=true;return;}
     // Reverse if past center
     if((this.facing>0&&this.x>VW*0.65)||(this.facing<0&&this.x<VW*0.35))this.facing*=-1;
-    // Find surface ants to attack
-    const freeAnts=ants.filter(a=>a.y<SURFACE_Y+8&&!a.fighting);
+    // Soldiers are targeted first — they protect the colony
+    const surfAnts=ants.filter(a=>a.y<SURFACE_Y+8&&!a.fighting);
+    const soldiers=surfAnts.filter(a=>a.type==='soldier');
+    const pool=soldiers.length?soldiers:surfAnts;
     let nearest=null,nearestD=18;
-    freeAnts.forEach(a=>{const d=Math.hypot(a.x-this.x,a.y-this.y);if(d<nearestD){nearestD=d;nearest=a;}});
+    pool.forEach(a=>{const d=Math.hypot(a.x-this.x,a.y-this.y);if(d<nearestD){nearestD=d;nearest=a;}});
     if(nearest){
       this.target=nearest;nearest.fighting=this;
       this.fightTimer=this.type==='beetle'?2.2:1.0;
@@ -919,6 +949,14 @@ function renderWorld(ts){
       c.fillStyle='rgba(160,200,255,0.85)';c.fillRect(a.x-1,a.y-12,3,4);
       c.fillStyle='rgba(80,140,220,0.9)';c.fillRect(a.x,a.y-12,1,1);
       c.fillStyle='rgba(60,100,180,0.7)';c.fillRect(a.x-1,a.y-9,3,1);
+    }
+    // Soldier HP pips (red=full, dark=lost)
+    if(a.type==='soldier'){
+      const maxHp=2;
+      for(let hi=0;hi<maxHp;hi++){
+        c.fillStyle=hi<(a.hp||1)?'#FF4444':'#441111';
+        c.fillRect(a.x-1+hi*3,a.y-14,2,2);
+      }
     }
     // Fight flash
     if(a.fighting){c.fillStyle='rgba(255,80,0,0.7)';c.fillRect(a.x-3,a.y-3,6,6);}
