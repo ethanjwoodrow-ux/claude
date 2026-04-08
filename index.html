@@ -480,13 +480,16 @@ function syncAnts(){
     if(a&&a.fighting){a.fighting.target=null;a.fighting=null;}
   }
   if(ants.length<S.antCount){
+    const slots=S.antCount-ants.length;       // exact number of new ants to create
     const have={};ants.forEach(a=>have[a.type]=(have[a.type]||0)+1);
     const needed=[];
     for(const t of['scout','soldier','nurse','builder','farmer']){
-      const w=S.antTypes[t]||0,g=have[t]||0;
-      for(let i=g;i<w;i++)needed.push(t);
+      const allowed=S.antTypes[t]||0,current=have[t]||0;
+      // Only spawn up to (allowed - current) of this type, and never exceed remaining slots
+      for(let i=current;i<allowed&&needed.length<slots;i++)needed.push(t);
     }
-    while(needed.length+ants.length<S.antCount)needed.push('worker');
+    // Fill any remaining slots with workers
+    while(needed.length<slots)needed.push('worker');
     needed.forEach(tp=>ants.push(new Ant(tp)));
   }
 }
